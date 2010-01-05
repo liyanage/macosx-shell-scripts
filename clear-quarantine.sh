@@ -7,9 +7,12 @@
 # Marc Liyanage / www.entropy.ch
 #
 
-[ $UID -eq 0 ] || { echo $0 must be run as root; exit 1; }
+[ $UID -eq 0 ] || { exec sudo $0; }
 
-find /Developer -type f -name '*.html' | python <(cat - <<EOF
+DIR="$1"
+[ "$DIR" ] || { DIR=/Developer; echo no directory argument given, using $DIR; }
+
+find "$DIR" -type f -name '*.html' | python <(cat - <<EOF
 #!/usr/bin/env python
 
 from xattr import *
