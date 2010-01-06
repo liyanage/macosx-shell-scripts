@@ -33,3 +33,5 @@ $CODEDIFF \
 ~/Desktop/"$REVISION1" ~/Desktop/"$REVISION2"
 
 rm -r ~/Desktop/"$REVISION1" ~/Desktop/"$REVISION2" /tmp/diffstat.txt
+
+find ~/Desktop/"code review $DIR $BRANCH" -type d -empty -delete
