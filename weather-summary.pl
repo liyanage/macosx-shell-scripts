@@ -6,13 +6,15 @@ use XML::LibXML;
 use IO::File;
 
 # Location codes from http://weather.yahoo.com
-my %cities = (
+my @cities = (
 	"Zurich\t\t"      => '784794',
 	"San Francisco\t" => '2487956',
+	"Cupertino\t" => '2388327',
 );
 
 my $report = "Current Temperature:\n";
-while (my ($key, $value) = each %cities) {
+while (my $key = shift @cities) {
+	my $value = shift @cities;
 	my $data = qx(curl -s http://weather.yahooapis.com/forecastrss?w=$value);
 	unless ($data) {
 		$report = 'Unable to get weather data';
@@ -26,6 +28,10 @@ while (my ($key, $value) = each %cities) {
 my $pipe = IO::File->new("|/usr/local/bin/growlnotify --sticky --name '$0'");
 $pipe->print($report);
 $pipe->close();
+
+system("touch /tmp/weatherupdate");
+
+exit 0;
 
 
 __END__
