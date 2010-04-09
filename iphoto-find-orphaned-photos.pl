@@ -3,11 +3,9 @@
 
 use strict;
 use warnings;
-
-use Data::Dumper;
-use Carp;
 use URI::Escape;
 use File::Basename;
+
 
 exit Tool->new(@ARGV)->run();
 
@@ -32,7 +30,6 @@ sub run {
 	$self->find_orphaned_in_db($_) foreach @db_paths;
 	return 0;
 }
-
 
 sub find_orphaned_in_db {
 	my $self = shift;
