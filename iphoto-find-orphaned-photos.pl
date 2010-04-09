@@ -42,12 +42,12 @@ sub find_orphaned_in_db {
 	foreach my $row (@rows) {
 		my ($path, $photo_id) = split(/\|/, $row);
 		next if (-e $path);
-		print "sqlite3 '$db_path' 'DELETE from SqPhotoInfo WHERE primaryKey = $photo_id'\n";
-		print "sqlite3 '$db_path' 'DELETE from AlbumsPhotosJoin WHERE sqPhotoInfo = $photo_id'\n";
-		print "sqlite3 '$db_path' 'DELETE from KeywordsPhotosJoin WHERE sqPhotoInfo = $photo_id'\n";
+		print "sqlite3 '$db_path' 'DELETE FROM SqPhotoInfo WHERE primaryKey = $photo_id'\n";
+		print "sqlite3 '$db_path' 'DELETE FROM AlbumsPhotosJoin WHERE sqPhotoInfo = $photo_id'\n";
+		print "sqlite3 '$db_path' 'DELETE FROM KeywordsPhotosJoin WHERE sqPhotoInfo = $photo_id'\n";
 		print "sqlite3 '$db_path' 'DELETE FROM SqFileInfo WHERE primaryKey IN (SELECT sqFileInfo FROM SqFileImage WHERE photoKey = $photo_id)'\n";
-		print "sqlite3 '$db_path' 'DELETE from SqFileImage WHERE photoKey = $photo_id'\n";
-		print "sqlite3 '$aux_path' 'DELETE from SQPhotoInfoEdit WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoExif2 WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoOld WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoOther WHERE primaryKey = $photo_id'\n";
+		print "sqlite3 '$db_path' 'DELETE FROM SqFileImage WHERE photoKey = $photo_id'\n";
+		print "sqlite3 '$aux_path' 'DELETE FROM SQPhotoInfoEdit WHERE primaryKey = $photo_id; DELETE FROM SqPhotoInfoExif2 WHERE primaryKey = $photo_id; DELETE FROM SqPhotoInfoOld WHERE primaryKey = $photo_id; DELETE FROM SqPhotoInfoOther WHERE primaryKey = $photo_id'\n";
 		print "\n";
 	}
 }
