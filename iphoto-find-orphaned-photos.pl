@@ -1,6 +1,5 @@
 #!/usr/bin/perl
 #
-#
 
 use strict;
 use warnings;
@@ -16,12 +15,9 @@ exit Tool->new(@ARGV)->run();
 package Tool;
 
 sub new {
-	my $self = shift;
+	my $class = shift;
 	my %args = @_;
-	
-	my $class = ref($self) || $self;
-	$self = bless \%args, $class;
-	return $self;
+	return bless \%args, $class;
 }
 
 sub run {
@@ -34,7 +30,6 @@ sub run {
 		qx(defaults read "$ENV{HOME}/Library/Preferences/com.apple.iApps" iPhotoRecentDatabases) =~ m!file://localhost(.+)"!g;
 
 	$self->find_orphaned_in_db($_) foreach @db_paths;
-
 	return 0;
 }
 
@@ -47,7 +42,6 @@ sub find_orphaned_in_db {
 	
 	my $cmd = "sqlite3 '$db_path' 'SELECT finfo.relativePath, fimg.photoKey FROM SqFileInfo finfo JOIN SQFileImage fimg ON finfo.primaryKey = fimg.sqFileInfo WHERE fimg.imageType = 6;'";
 	my @rows = split(/\n/, qx($cmd));
-
 	foreach my $row (@rows) {
 		my ($path, $photo_id) = split(/\|/, $row);
 		next if (-e $path);
@@ -58,10 +52,6 @@ sub find_orphaned_in_db {
 		print "sqlite3 '$db_path' 'DELETE from SqFileImage WHERE photoKey = $photo_id'\n";
 		print "sqlite3 '$aux_path' 'DELETE from SQPhotoInfoEdit WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoExif2 WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoOld WHERE primaryKey = $photo_id; DELETE from SqPhotoInfoOther WHERE primaryKey = $photo_id'\n";
 		print "\n";
-
 	}
-	
 }
-
-
 
