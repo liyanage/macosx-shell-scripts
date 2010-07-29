@@ -15,11 +15,15 @@ use strict;
 use warnings;
 
 use Term::ANSIColor;
+use File::Basename;
 
 my ($file) = @ARGV;
 die "Usage: $0 file\n" unless $file;
 
 die $! unless (-f $file);
+
+my ($fullpath) = "$ENV{PWD}/$file";
+my $executable_path = File::Basename::dirname($fullpath);
 
 my $libs = {};
 check_libs(file => $file, libs => $libs);
@@ -42,6 +46,7 @@ sub check_libs {
 	my $libs = $args{libs};
 	my @file_libs =
 		grep {$_ ne $args{file}}
+		map {s/\@executable_path/$executable_path/e; $_}
 		grep {$_}
 		map {/^\s+(\S+)/}
 		qx(otool -L '$args{file}');
