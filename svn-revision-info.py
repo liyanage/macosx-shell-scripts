@@ -10,7 +10,7 @@
 # Written by Marc Liyanage <http://www.entropy.ch>
 # 
 
-import subprocess, sys, re, codecs, xml.etree.ElementTree
+import subprocess, sys, re, xml.etree.ElementTree
 
 if len(sys.argv) < 2:
 	print >> sys.stderr, 'Usage: {0} svn_base_url < file_with_list_of_revisions'.format(sys.argv[0])
