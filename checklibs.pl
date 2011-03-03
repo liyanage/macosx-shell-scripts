@@ -44,12 +44,17 @@ print
 sub check_libs {
 	my (%args) = @_;
 	my $libs = $args{libs};
+
 	my @file_libs =
-		grep {$_ ne $args{file}}
-		map {s/\@executable_path/$executable_path/e; $_}
 		grep {$_}
 		map {/^\s+(\S+)/}
 		qx(otool -L '$args{file}');
+	shift @file_libs;
+	@file_libs =
+		grep {$_ ne $args{file}}
+		map {s/\@executable_path/$executable_path/e; $_}
+		@file_libs;
+		
 	$libs->{$args{file}} = \@file_libs;
 	foreach my $lib (grep {!$libs->{$_}} @file_libs) {
 		unless (-e $lib) {
