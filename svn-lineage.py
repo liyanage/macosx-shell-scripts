@@ -2,16 +2,37 @@
 
 import subprocess, sys, xml.etree.ElementTree, datetime, optparse
 
+
+def shell(cmd, fatal = True):
+	popen = subprocess.Popen(cmd, shell = True, stdout = subprocess.PIPE)
+	output = popen.communicate()[0]
+	if popen.returncode != 0:
+		if fatal:
+			sys.exit(1)
+		else:
+			return None
+	return output
+
+
 parser = optparse.OptionParser(usage = "Usage: %prog [options] svn_url")
 parser.add_option("-v", dest = "verbose", help = "verbose", action="store_true")
 (options, args) = parser.parse_args()
-
-if len(args) < 1:
-        parser.print_help()
-        sys.exit(1)
-
-svn_url = args[0]
 verbose = options.verbose
+
+
+if len(args) > 0:
+	svn_url = args[0]
+else:
+	# fall back to current directory if it is a sandbox
+	cmd = 'svn info --xml'
+	output = shell(cmd, False)
+	if not output:
+		parser.print_help()
+		sys.exit(1)
+
+	tree = xml.etree.ElementTree.fromstring(output)
+	svn_url = tree.findtext('entry/url')
+
 
 cmd = 'svn log --xml -v {0}'.format(svn_url)
 popen = subprocess.Popen(cmd, shell = True, stdout = subprocess.PIPE)
@@ -20,7 +41,6 @@ if popen.returncode != 0:
 	sys.exit(1)
 
 tree = xml.etree.ElementTree.fromstring(output)
-#tree = xml.etree.ElementTree.parse('temp.xml')
 
 current_url_or_path = None
 revision_count = 0
@@ -31,7 +51,6 @@ for logentry in tree.findall('logentry'):
 
 	if not current_url_or_path:
 		current_url_or_path = svn_url
-#		print '{0} r{2} {1}'.format(date, current_url_or_path, rev)
 
 	msg = logentry.findtext('msg')
 	msg = ' '.join(msg.strip().splitlines())
