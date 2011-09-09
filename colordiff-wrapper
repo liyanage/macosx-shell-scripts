@@ -1,0 +1,19 @@
+#!/bin/bash
+#
+# Wrapper for diff / colordiff to filter UTF-16 Cocoa *.strings files through iconv to get UTF-8
+#
+# Written by Marc Liyanage <http://www.entropy.ch>
+
+# $1 = -u
+# $2 = -L
+# $3 = label for left file
+# $4 = -L
+# $5 = label for right file
+# $6 = path to left file
+# $7 = path to right file
+
+if [[ "$7" == *.strings ]]; then
+	/opt/local/bin/colordiff $1 $2 "$3" $4 "$5" <(iconv -f utf-16 -t utf-8 "$6") <(iconv -f utf-16 -t utf-8 "$7")
+else
+	/opt/local/bin/colordiff "$@"
+fi

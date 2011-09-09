@@ -22,6 +22,8 @@ for line in sys.stdin:
 	line = line.strip()
 	match = re.search('(\d+)', line)
 	if not match:
+		if re.match('^\s*$', line):
+			print line
 		continue
 	
 	revision = match.group(0)
