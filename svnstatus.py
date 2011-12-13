@@ -24,7 +24,10 @@ for line in output.splitlines():
 		time.sleep(0.01)
 		continue
 
-	print
+	if current_external:
+		current_external = ''
+		print
+
 	print line
 
 print "\x1b[2K",
