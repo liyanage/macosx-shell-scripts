@@ -13,7 +13,7 @@
 # $7 = path to right file
 
 if [[ "$7" == *.strings ]]; then
-	/opt/local/bin/colordiff $1 $2 "$3" $4 "$5" <(iconv -f utf-16 -t utf-8 "$6") <(iconv -f utf-16 -t utf-8 "$7")
+	/usr/local/bin/colordiff $1 $2 "$3" $4 "$5" <(iconv -f utf-16 -t utf-8 "$6") <(iconv -f utf-16 -t utf-8 "$7")
 else
-	/opt/local/bin/colordiff "$@"
+	/usr/local/bin/colordiff "$@"
 fi
