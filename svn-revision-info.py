@@ -11,15 +11,45 @@
 # 
 
 import subprocess, sys, re, xml.etree.ElementTree
+from pprint import pprint
 
-if len(sys.argv) < 2:
-	print >> sys.stderr, 'Usage: {0} svn_base_url < file_with_list_of_revisions'.format(sys.argv[0])
-	sys.exit(1)
+svn_url_src = ''
+svn_url_dst = ''
+svn_base_url = ''
 
-svn_base_url = sys.argv[1]
+argc = len(sys.argv)
+if argc == 3:
+	svn_url_src, svn_url_dst = sys.argv[1:3]
+elif argc == 2:
+	svn_base_url = sys.argv[1]
+	input_lines = [line.rstrip() for line in sys.stdin]
+else:
+	print >> sys.stderr, 'Usage:'
+	print >> sys.stderr, '{0} svn_base_url < file_with_list_of_revisions'.format(sys.argv[0])
+	print >> sys.stderr, '{0} svn_url_source svn_url_destination'.format(sys.argv[0])
+	exit(1)
 
-for line in sys.stdin:
-	line = line.strip()
+if svn_url_src:
+	cmd = 'svn mergeinfo --show-revs eligible "{0}" "{1}"'.format(svn_url_src, svn_url_dst)
+	popen = subprocess.Popen(cmd, stdout = subprocess.PIPE, shell = True)
+	output = popen.communicate()[0]
+	if popen.returncode:
+		print >> sys.stderr, 'Nonzero exit status for "{0}"'.format(cmd)
+		exit(1)
+	input_lines = output.split()
+	
+	cmd = 'svn info --xml "{0}"'.format(svn_url_src)
+	popen = subprocess.Popen(cmd, stdout = subprocess.PIPE, shell = True)
+	output = popen.communicate()[0]
+	if popen.returncode:
+		print >> sys.stderr, 'Nonzero exit status for "{0}"'.format(cmd)
+		exit(1)
+
+	tree = xml.etree.ElementTree.fromstring(output)
+	svn_base_url = tree.findtext('entry/repository/root')
+
+
+for line in input_lines:
 	match = re.search('(\d+)', line)
 	if not match:
 		if re.match('^\s*$', line):
