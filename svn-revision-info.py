@@ -7,6 +7,11 @@
 # 
 #     svn mergeinfo --show-revs eligible svn_url_1 svn_url_2 | svn-revision-info.py svn_base_url
 #
+# or alternatively with two SVN URLs, in which case the script runs "svn mergeinfo" for you
+# and figures out the base URL automatically:
+# 
+#     svn-revision-info.py svn_url_1 svn_url_2
+#
 # Written by Marc Liyanage <http://www.entropy.ch>
 # 
 
