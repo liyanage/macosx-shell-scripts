@@ -16,7 +16,7 @@ from pprint import pprint
 
 class MachOFile:
 
-	def __init__(self, image_path, arch = 'i386', parent = None):
+	def __init__(self, image_path, arch, parent = None):
 		self.image_path = image_path
 		self._dependencies = []
 		self._cache = dict(paths = {}, order = [])
@@ -34,7 +34,11 @@ class MachOFile:
 
 	def load_header(self):
 		# Get the mach-o header info, we're interested in the file type (executable, dylib)
-		output = self.shell('otool -arch {0} -h "{1}"', [self.arch, self.image_path.resolved_path], fatal = True)
+		cmd = 'otool -arch {0} -h "{1}"'
+		output = self.shell(cmd, [self.arch, self.image_path.resolved_path], fatal = True)
+		if not output:
+			print >> sys.stderr, 'Unable to load mach header for {0} ({1}), architecture mismatch? Use --arch option to pick architecture'.format(self.image_path.resolved_path, self.arch)
+			exit()
 		(keys, values) = output.splitlines()[2:]
 		self.header_info = dict(zip(keys.split(), values.split()))
 
@@ -152,7 +156,7 @@ class MachOFile:
 	def lookup_or_make_item(self, image_path):
 		image = self.cached_item_for_path(image_path.resolved_path)
 		if not image: # cache miss
-			image = MachOFile(image_path, parent = self)
+			image = MachOFile(image_path, self.arch, parent = self)
 		return image
 
 	def image_path_for_recorded_path(self, recorded_path):
@@ -282,7 +286,7 @@ class ImagePath:
 
 # Command line driver
 parser = optparse.OptionParser(usage = "Usage: %prog [options] path_to_mach_o_file")
-parser.add_option("--arch", dest = "arch", help = "architecture", metavar = "ARCH")
+parser.add_option("--arch", dest = "arch", help = "architecture", metavar = "ARCH", default = 'i386')
 parser.add_option("--all", dest = "include_system_libraries", help = "Include system frameworks and libraries", action="store_true")
 (options, args) = parser.parse_args()
 
@@ -290,9 +294,7 @@ if len(args) < 1:
 	parser.print_help()
 	sys.exit(1)
 
-toplevel_image = MachOFile(ImagePath(args[0]))
-if options.arch:
-	toplevel_image.arch = options.arch
+toplevel_image = MachOFile(ImagePath(args[0]), options.arch)
 
 for dependency in toplevel_image.all_dependencies():
 	if dependency.image_path.exists() and (not options.include_system_libraries) and dependency.image_path.is_system_location():
