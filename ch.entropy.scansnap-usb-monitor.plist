@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Disabled</key>
+	<false/>
+	<key>Label</key>
+	<string>ch.entropy.scansnap-usb-monitor</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/liyanage/git/macosx-shell-scripts/scansnap-usb-monitor.sh</string>
+	</array>
+	<key>LaunchEvents</key>
+	<dict>
+		<key>com.apple.iokit.matching</key>
+		<dict>
+			<key>ch.entropy.usbmuxd.attach.ScanSnap</key>
+			<dict>
+				<key>IOProviderClass</key>
+				<string>IOUSBDevice</string>
+				<key>idProduct</key>
+				<integer>4589</integer>
+				<key>idVendor</key>
+				<integer>1221</integer>
+			</dict>
+		</dict>
+	</dict>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StartInterval</key>
+	<integer>300</integer>
+	<key>Debug</key>
+	<true/>
+</dict>
+</plist>
