@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import random
-import copy
 import sys
 
 def find_words(node, available, parents=None):
@@ -10,7 +9,7 @@ def find_words(node, available, parents=None):
     if '_leaf' in node:
         yield ''.join(parents)
     for char in (i for i in set(available) if i in node):
-        remaining = copy.copy(available)
+        remaining = available[:]
         remaining.remove(char)
         for word in find_words(node[char], remaining, parents + [char]):
             yield word
