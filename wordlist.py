@@ -17,8 +17,7 @@ def find_words(node, available, parents=None):
 def read_words(filename):
     root = {}
     with open(filename) as f:
-        for line in f.readlines():
-            line = line.rstrip().lower()
+        for line in (line.rstrip().lower() for line in f.readlines()):
             node = root
             for char in line:
                 node = node.setdefault(char, {})
