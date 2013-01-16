@@ -37,7 +37,7 @@ class Node(object):
     def add_path(self, path):
         if not path:
             return
-        path = path.replace(' ', r'\ ')
+        path = re.sub(r'([^a-zA-Z0-9/_.-])', r'\\\1', path)
         items = path.split('/')
         self.add_path_components(items)
 
