@@ -33,10 +33,13 @@ class KeychainPassword:
         except:
             return None
         
-        result = re.findall('password: "(.*?)"$.*"acct"<blob>="(.*?)"$', security_output, re.DOTALL|re.MULTILINE)
+        result = re.findall('password: (?:0x([A-Z0-9]+)\s+)?"(.*?)"$.*"acct"<blob>="(.*?)"$', security_output, re.DOTALL|re.MULTILINE)
         if not result:
             return None
-        (password, username), = result
+        (hexpassword, password, username), = result
+
+        if hexpassword:
+            password = hexpassword.decode('hex').decode('utf-8')
 
         return username, password
 
