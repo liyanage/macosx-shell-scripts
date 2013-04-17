@@ -26,3 +26,9 @@ VOLUME_PATH=$(hdiutil attach $GIT_DMG | grep /Volumes | sed -E 's#.*(/Volumes.*)
 GIT_PKG_PATH=$(echo "$VOLUME_PATH"/*.pkg)
 sudo installer -pkg "$GIT_PKG_PATH" -target /
 hdiutil unmount "$VOLUME_PATH" 
+
+
+# To prevent missing SVN/Core.pm
+# http://victorquinn.com/blog/2012/02/19/fix-git-svn-in-mountain-lion/
+sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/auto/SVN /Library/Perl/5.12/darwin-thread-multi-2level/auto/
+sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/SVN /Library/Perl/5.12/
