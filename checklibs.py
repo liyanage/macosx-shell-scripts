@@ -206,6 +206,14 @@ class MachOFile:
 
 		return output
 
+	@classmethod
+	def architectures_for_image_at_path(cls, path):
+		output = cls.shell('file "{}"', [path])
+		file_architectures = re.findall(r' executable (\w+)', output)
+		ordering = 'x86_64 i386'.split()
+		file_architectures = sorted(file_architectures, lambda a, b: cmp(ordering.index(a), ordering.index(b)))
+		return file_architectures
+
 	MH_EXECUTE = 0x2
 	MH_DYLIB = 0x6
 	MH_BUNDLE = 0x8
@@ -286,13 +294,18 @@ class ImagePath:
 
 # Command line driver
 parser = optparse.OptionParser(usage = "Usage: %prog [options] path_to_mach_o_file")
-parser.add_option("--arch", dest = "arch", help = "architecture", metavar = "ARCH", default = 'i386')
+parser.add_option("--arch", dest = "arch", help = "architecture", metavar = "ARCH")
 parser.add_option("--all", dest = "include_system_libraries", help = "Include system frameworks and libraries", action="store_true")
 (options, args) = parser.parse_args()
 
 if len(args) < 1:
 	parser.print_help()
 	sys.exit(1)
+
+archs = MachOFile.architectures_for_image_at_path(args[0])
+if archs and not options.arch:
+	print >> sys.stderr, 'Analyzing architecture {}, override with --arch if needed'.format(archs[0])
+	options.arch = archs[0]
 
 toplevel_image = MachOFile(ImagePath(args[0]), options.arch)
 
