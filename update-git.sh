@@ -30,5 +30,8 @@ hdiutil unmount "$VOLUME_PATH"
 
 # To prevent missing SVN/Core.pm
 # http://victorquinn.com/blog/2012/02/19/fix-git-svn-in-mountain-lion/
-sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/auto/SVN /Library/Perl/5.12/darwin-thread-multi-2level/auto/
-sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/SVN /Library/Perl/5.12/
+if [ ! -e /Library/Perl/5.12/darwin-thread-multi-2level/auto/SVN ]; then
+    sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/auto/SVN /Library/Perl/5.12/darwin-thread-multi-2level/auto/
+    sudo ln -s /Applications/Xcode.app/Contents/Developer/Library/Perl/5.12/darwin-thread-multi-2level/SVN /Library/Perl/5.12/
+fi
+
