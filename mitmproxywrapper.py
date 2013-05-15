@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 #
-# Toggles proxy on localhost on/off
+# Helper tool to enable/disable OS X proxy and wrap mitmproxy
 #
-# Recommended usage:
-#
-# sudo setproxy.py
-#
+# https://github.com/liyanage/macosx-shell-scripts
 # 
 
 import subprocess
 import re
+import argparse
 
 def run_networksetup_command(*arguments):
     return subprocess.check_output(['sudo', 'networksetup'] + list(arguments))
@@ -49,15 +47,35 @@ def primary_service_name():
 
 def proxy_enabled_for_service(service):
     return proxy_state_for_service(service)['Enabled'] == 'Yes'
-    
 
-def main():
+def toggle_proxy():
     service_name = primary_service_name()
 
     if proxy_enabled_for_service(service_name):
         disable_proxy_for_service(service_name)
     else:
         enable_proxy_for_service(service_name)
+
+def wrap_mitmproxy():
+    service_name = primary_service_name()
+
+    if not proxy_enabled_for_service(service_name):
+        enable_proxy_for_service(service_name)
+
+    subprocess.check_call(['mitmproxy', '--palette', 'light'])
+
+    if proxy_enabled_for_service(service_name):
+        disable_proxy_for_service(service_name)
+
+def main():
+    parser = argparse.ArgumentParser(description='Helper tool for OS X proxy configuration and mitmproxy')
+    parser.add_argument('--toggle', action='store_true', help='just toggle the proxy configuration')
+    args = parser.parse_args()
+
+    if args.toggle:
+        toggle_proxy()
+    else:
+        wrap_mitmproxy()
 
 if __name__ == '__main__':
     main()
