@@ -9,12 +9,18 @@ class KeychainPassword:
         if host:
             cmd.extend(['-s', host])
         
-        username, password = cls.run_security_command(cmd)
+        credentials = cls.run_security_command(cmd)
+        if not credentials:
+            return None
+        username, password = credentials
         return password
         
     @classmethod
     def find_generic_password(cls, username, label=None):
-        username, password = cls.find_generic_username_and_password(username=username, label=label)
+        credentials = cls.find_generic_username_and_password(username=username, label=label)
+        if not credentials:
+            return None
+        username, password = credentials
         return password
         
     @classmethod
