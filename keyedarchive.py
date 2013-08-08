@@ -110,20 +110,24 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
             return '<reference to {} id {}>'.format(self.node_class.dump_string(), self.identifier)
         seen.add(self)
 
-        lines = ['<{} id {}>'.format(self.node_class.dump_string(), self.identifier)]
         keys = self.properties.keys()
-        if keys:
-            max_key_len = max(map(len, keys))
-            case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0], cmp=lambda a, b: cmp(a.lower(), b.lower()))
-            for key, value in case_insensitive_sorted_property_items:
-                if isinstance(value, KeyedArchiveObjectGraphNode):
-    #            if callable(getattr(value, 'dump_string', None)):
-                    description = value.dump_string(seen=seen)
-                else:
-                    description = unicode(value)
-                longest_key_padding = ' ' * (max_key_len - len(key))
-                longest_key_value_indent = max_key_len + 2
-                lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
+        instance_header = '<{} id {}>'.format(self.node_class.dump_string(), self.identifier)
+        if not keys:
+            instance_header += ' (empty)'
+            return instance_header
+
+        lines = [instance_header]
+        max_key_len = max(map(len, keys))
+        case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0], cmp=lambda a, b: cmp(a.lower(), b.lower()))
+        for key, value in case_insensitive_sorted_property_items:
+            if isinstance(value, KeyedArchiveObjectGraphNode):
+#            if callable(getattr(value, 'dump_string', None)):
+                description = value.dump_string(seen=seen)
+            else:
+                description = unicode(value)
+            longest_key_padding = ' ' * (max_key_len - len(key))
+            longest_key_value_indent = max_key_len + 2
+            lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
         
         return '\n'.join(lines)
     
