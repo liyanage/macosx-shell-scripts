@@ -15,6 +15,7 @@ import re
 import plistlib
 import objc
 import base64
+import collections
 
 
 class KeyedArchiveObjectGraphNode(object):
@@ -340,30 +341,38 @@ class KeyedArchive(object):
         return cls(archive_dictionary), None
 
     @classmethod
-    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
+    def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
         columns = [column_name]
         if extra_columns:
             columns.extend(extra_columns)
         sql = 'SELECT {} FROM {}'.format(', '.join(columns), table_name)
         cursor = connection.execute(sql)
 
+        ArchiveDataRow = collections.namedtuple('ArchiveDataRow', 'archive extra_data error'.split())
+
         archives = []
         for row in cursor:
             blob, extra_fields = row[0], cls.sanitize_row(row[1:])
-            extra_data = dict(zip(extra_columns, extra_fields))
-            if extra_data:
-                print extra_data
-            if not blob:
-                if extra_data:
-                    print '(null)'
-                continue;
-            archive, error = cls.archive_from_bytes(blob)
-            if archive is not None:
-                print archive.dump_string()
-            else:
-                print error
-            print
+            archive = None
+            error = None
+            if blob:
+                archive, error = cls.archive_from_bytes(blob)
+            archive_data_row = ArchiveDataRow(archive, dict(zip(extra_columns, extra_fields)), error)
+            archives.append(archive_data_row)
+        return archives
 
+    @classmethod
+    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
+        rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns)
+        for row in rows:
+            if row.extra_data:
+                print row.extra_data
+            if row.archive:
+                print row.archive.dump_string()
+            else:
+                if row.extra_data:
+                    print '(null)'
+    
     @classmethod
     def sanitize_row(cls, row):
         return ['(null)' if i is None else i for i in row]
