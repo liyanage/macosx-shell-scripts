@@ -110,18 +110,20 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
             return '<reference to {} id {}>'.format(self.node_class.dump_string(), self.identifier)
         seen.add(self)
 
-        max_key_len = max(map(len, self.properties.keys()))
         lines = ['<{} id {}>'.format(self.node_class.dump_string(), self.identifier)]
-        case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0], cmp=lambda a, b: cmp(a.lower(), b.lower()))
-        for key, value in case_insensitive_sorted_property_items:
-            if isinstance(value, KeyedArchiveObjectGraphNode):
-#            if callable(getattr(value, 'dump_string', None)):
-                description = value.dump_string(seen=seen)
-            else:
-                description = unicode(value)
-            longest_key_padding = ' ' * (max_key_len - len(key))
-            longest_key_value_indent = max_key_len + 2
-            lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
+        keys = self.properties.keys()
+        if keys:
+            max_key_len = max(map(len, keys))
+            case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0], cmp=lambda a, b: cmp(a.lower(), b.lower()))
+            for key, value in case_insensitive_sorted_property_items:
+                if isinstance(value, KeyedArchiveObjectGraphNode):
+    #            if callable(getattr(value, 'dump_string', None)):
+                    description = value.dump_string(seen=seen)
+                else:
+                    description = unicode(value)
+                longest_key_padding = ' ' * (max_key_len - len(key))
+                longest_key_value_indent = max_key_len + 2
+                lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
         
         return '\n'.join(lines)
     
@@ -327,23 +329,47 @@ class KeyedArchive(object):
     
     @classmethod
     def archive_from_bytes(cls, bytes):
+        assert bytes, 'Missing input data'
         archive_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
         if not archive_dictionary:
             return None, error
         return cls(archive_dictionary), None
 
     @classmethod
-    def archives_from_sqlite_table_column(cls, connection, table_name, column_name):
-        cursor = connection.execute('SELECT {} FROM {}'.format(column_name, table_name))
+    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
+        columns = [column_name]
+        if extra_columns:
+            columns.extend(extra_columns)
+        sql = 'SELECT {} FROM {}'.format(', '.join(columns), table_name)
+        cursor = connection.execute(sql)
+
         archives = []
-        for blob, in cursor:
+        for row in cursor:
+            blob, extra_fields = row[0], cls.sanitize_row(row[1:])
+            extra_data = dict(zip(extra_columns, extra_fields))
+            if extra_data:
+                print extra_data
+            if not blob:
+                if extra_data:
+                    print '(null)'
+                continue;
             archive, error = cls.archive_from_bytes(blob)
             if archive is not None:
-                archives.append(archive)
+                print archive.dump_string()
             else:
                 print error
-        return archives
+            print
 
+    @classmethod
+    def sanitize_row(cls, row):
+        return ['(null)' if i is None else i for i in row]
+#         output = []
+#         if not row:
+#             return None
+#         for item in row:
+#             if item is None:
+#                 item = '(null)'
+#             output.append(item)
 
 class KeyedArchiveTool(object):
 
@@ -356,8 +382,7 @@ class KeyedArchiveTool(object):
         
     def run_sqlite(self):
         conn = sqlite3.connect(self.args.sqlite_filename)
-        for archive in KeyedArchive.archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column):
-            print archive.dump_string()
+        KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns)
 
     @classmethod
     def main(cls):
@@ -365,6 +390,7 @@ class KeyedArchiveTool(object):
         parser.add_argument('--sqlite_filename', help='SQLite DB filename')
         parser.add_argument('--sqlite_table', help='SQLite DB table name')
         parser.add_argument('--sqlite_column', help='SQLite DB column name')
+        parser.add_argument('--sqlite_extra_column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
         cls(parser.parse_args()).run()
 
 if __name__ == '__main__':
