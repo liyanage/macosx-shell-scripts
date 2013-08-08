@@ -363,13 +363,7 @@ class KeyedArchive(object):
     @classmethod
     def sanitize_row(cls, row):
         return ['(null)' if i is None else i for i in row]
-#         output = []
-#         if not row:
-#             return None
-#         for item in row:
-#             if item is None:
-#                 item = '(null)'
-#             output.append(item)
+
 
 class KeyedArchiveTool(object):
 
