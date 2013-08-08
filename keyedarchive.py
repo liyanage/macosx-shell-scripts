@@ -271,7 +271,7 @@ class KeyedArchiveObjectGraphClassNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return cls.is_nsdictionary(serialized_representation) and '$classname' in serialized_representation and '$classes' in serialized_representation
+        return cls.is_nsdictionary(serialized_representation) and '$classname' in serialized_representation
 
     def dump_string(self):
         return self.serialized_representation['$classname']
