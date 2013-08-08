@@ -4,6 +4,7 @@
 #
 
 set -e
+set -x
 
 # See https://help.github.com/articles/installing-git-html-help
 sudo mkdir -p /usr/local/git/share/doc
@@ -36,10 +37,10 @@ PERL_LIB_DIR_PLATFORM=$PERL_LIB_DIR/darwin-thread-multi-2level
 XCODE_PATH=/Applications/Xcode.app
 
 sudo mkdir -p $PERL_LIB_DIR_PLATFORM/auto/
-sudo rm $PERL_LIB_DIR_PLATFORM/auto/SVN
+[ -e $PERL_LIB_DIR_PLATFORM/auto/SVN  ] && sudo rm $PERL_LIB_DIR_PLATFORM/auto/SVN
 sudo ln -s $XCODE_PATH/Contents/Developer$PERL_LIB_DIR_PLATFORM/auto/SVN $PERL_LIB_DIR_PLATFORM/auto/
 
 sudo mkdir -p $PERL_LIB_DIR/
-sudo rm $PERL_LIB_DIR/SVN
+[ -e $PERL_LIB_DIR/SVN ] && sudo rm $PERL_LIB_DIR/SVN
 sudo ln -s $XCODE_PATH/Contents/Developer$PERL_LIB_DIR_PLATFORM/SVN $PERL_LIB_DIR/
 
