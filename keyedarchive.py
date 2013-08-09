@@ -81,6 +81,9 @@ class KeyedArchiveObjectGraphNullNode(KeyedArchiveObjectGraphNode):
     def can_parse_serialized_representation(cls, serialized_representation):
         return serialized_representation == '$null'
 
+    def dump_string(self, seen=None):
+        return '(null)'
+
 
 class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
 
@@ -326,7 +329,7 @@ class KeyedArchive(object):
 
     def replacement_object_for_value(self, value):
         id = KeyedArchiveObjectGraphNode.keyed_archiver_uid_for_value(value)
-        if not id:
+        if id is None:
             return None
         return self.object_at_index(id)
     
