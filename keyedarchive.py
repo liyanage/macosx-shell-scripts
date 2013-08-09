@@ -12,7 +12,6 @@ import sqlite3
 import argparse
 import Foundation
 import re
-import plistlib
 import objc
 import base64
 import collections
@@ -150,7 +149,6 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
         for node_class in cls.__subclasses__():
             if node_class.can_parse_serialized_representation(serialized_representation):
                 return node_class.parse_serialized_representation(identifier, serialized_representation)
-#        print serialized_representation
         return super(KeyedArchiveObjectGraphInstanceNode, cls).parse_serialized_representation(identifier, serialized_representation)
 
 
