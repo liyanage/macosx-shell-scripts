@@ -80,7 +80,7 @@ class KeyedArchiveObjectGraphNullNode(KeyedArchiveObjectGraphNode):
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
         return serialized_representation == '$null'
-
+    
     def dump_string(self, seen=None):
         return '(null)'
 
@@ -335,6 +335,7 @@ class KeyedArchive(object):
     
     @classmethod
     def archive_from_bytes(cls, bytes):
+        bytes = bytearray(bytes)
         assert bytes, 'Missing input data'
         archive_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
         if not archive_dictionary:
@@ -375,6 +376,19 @@ class KeyedArchive(object):
                     print '(null)'
     
     @classmethod
+    def dump_archive_from_plist_file(cls, plist_path, keypath):
+        with open(plist_path) as f:
+            bytes = f.read()
+        assert bytes, 'Input file {} is empty'.format(plist_path)
+        bytes = bytearray(bytes)
+        plist_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
+        if not plist_dictionary:
+            raise Exception('Unable to read property list from {}'.format(plist_dictionary))
+        value = plist_dictionary.valueForKeyPath_(keypath)
+        archive, error = cls.archive_from_bytes(value.bytes())
+        print archive.dump_string()
+        
+    @classmethod
     def sanitize_row(cls, row):
         return ['(null)' if i is None else i for i in row]
 
@@ -385,20 +399,32 @@ class KeyedArchiveTool(object):
         self.args = args
 
     def run(self):
-        if self.args.sqlite_filename:
+        if self.args.sqlite_path:
             self.run_sqlite()
+        elif self.args.plist_path:
+            self.run_plist()
         
     def run_sqlite(self):
-        conn = sqlite3.connect(self.args.sqlite_filename)
+        conn = sqlite3.connect(self.args.sqlite_path)
         KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns)
+
+    def run_plist(self):
+        KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath)
 
     @classmethod
     def main(cls):
         parser = argparse.ArgumentParser(description='NSKeyedArchive tool')
-        parser.add_argument('--sqlite_filename', help='SQLite DB filename')
-        parser.add_argument('--sqlite_table', help='SQLite DB table name')
-        parser.add_argument('--sqlite_column', help='SQLite DB column name')
-        parser.add_argument('--sqlite_extra_column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
+
+        sqlite_group = parser.add_argument_group(title='Reading from SQLite databases', description='Read the serialized archive from SQLite DB. You need to pass at least the sqlite_path, sqlite_table, and sqlite_column options.')
+        sqlite_group.add_argument('--sqlite_path', help='The path to the SQLite database file')
+        sqlite_group.add_argument('--sqlite_table', help='SQLite DB table name')
+        sqlite_group.add_argument('--sqlite_column', help='SQLite DB column name')
+        sqlite_group.add_argument('--sqlite_extra_column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
+
+        plist_group = parser.add_argument_group(title='Reading from Property Lists', description='Read the serialized archive from a property list file, usually a preferences file in ~/Library/Preferences. You need to pass the plist_path and plist_keypath options.')
+        plist_group.add_argument('--plist_path', help='The path to the plist file')
+        plist_group.add_argument('--plist_keypath', help='The key/value coding key path to the object in the plist that contains the serialized keyed archiver data.')
+
         cls(parser.parse_args()).run()
 
 if __name__ == '__main__':
