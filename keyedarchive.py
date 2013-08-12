@@ -293,6 +293,116 @@ class KeyedArchiveObjectGraphStringNode(KeyedArchiveObjectGraphNode):
         return unicode(self.serialized_representation)
 
 
+class KeyedArchiveInputData(object):
+
+    def __init__(self, raw_data):
+        self.raw_data = raw_data
+        self.encoded_data = None
+        self.decoded_data = None
+        self.decode_data()
+        
+    def decode_data(self):
+        self.encoded_data = self.raw_data
+        self.decoded_data = self.raw_data
+    
+    def data(self):
+        return self.decoded_data
+    
+    def encoded_data_length(self):
+        if not self.encoded_data:
+            return 0
+        return len(self.encoded_data)
+    
+    def raw_data_is_ascii(self):
+        try:
+            self.raw_data.decode('ascii')
+        except UnicodeDecodeError:
+            return False
+        return True
+    
+    @classmethod
+    def priority(cls):
+        return 0
+    
+    @classmethod
+    def identifier(cls):
+        return cls.__name__.replace('KeyedArchiveInputData', '').lower()
+    
+    @classmethod
+    def guess_encoding(cls, data, encoding='auto'):
+        if encoding == 'none':
+            return cls(data)
+
+        subclasses = cls.__subclasses__()
+
+        if encoding == 'auto':
+            items = []
+            for subclass in subclasses:
+                item = subclass(data)
+                items.append(item)
+            
+            def item_comparator(a, b):
+                length_comparison = cmp(b.encoded_data_length(), a.encoded_data_length())
+                if length_comparison != 0:
+                    return length_comparison
+                
+                return cmp(b.priority(), a.priority())
+            
+            items = sorted(items, cmp=item_comparator)
+            item = items[0]
+            if items[0].encoded_data_length() == 0:
+                # fall back to 'none'
+                item = cls(data)
+#            print 'Encoding "auto" picked encoding class {}'.format(type(item))
+            return item
+
+        for subclass in subclasses:
+            if subclass.identifier() == encoding:
+                return subclass(data)
+        
+        raise Exception('Unable to determine input encoding')
+        
+
+class KeyedArchiveInputDataHex(KeyedArchiveInputData):
+    
+    def decode_data(self):
+        if not self.raw_data_is_ascii():
+            return
+
+        regular_expressions = [r'<([A-Fa-f\s0-9]+)>', r'([A-Fa-f\s0-9]+)']
+        for regex in regular_expressions:
+            matches = re.findall(regex, self.raw_data, re.MULTILINE)
+            if matches:
+                matches = sorted(matches, key=len, reverse=True)
+                data = matches[0]
+                data = re.sub(r'\s+', '', data)
+                self.encoded_data = data
+                self.decoded_data = data.decode('hex')
+                return
+
+    @classmethod
+    def priority(cls):
+        return 1
+
+class KeyedArchiveInputDataBase64(KeyedArchiveInputData):
+
+    def decode_data(self):
+        if not self.raw_data_is_ascii():
+            return
+
+        matches = re.findall(r'([A-Za-z\s0-9+/=]+)', self.raw_data, re.MULTILINE)
+        if not matches:
+            return
+
+        if matches:
+            matches = sorted(matches, key=len, reverse=True)
+        
+        data = matches[0]
+        data = re.sub(r'\s+', '', data)
+        self.encoded_data = data
+        self.decoded_data = base64.b64decode(data)
+        
+
 class KeyedArchive(object):
 
     def __init__(self, archive_dictionary):
@@ -376,6 +486,10 @@ class KeyedArchive(object):
                     print '(null)'
     
     @classmethod
+    def sanitize_row(cls, row):
+        return ['(null)' if i is None else i for i in row]
+
+    @classmethod
     def dump_archive_from_plist_file(cls, plist_path, keypath):
         with open(plist_path) as f:
             bytes = f.read()
@@ -387,11 +501,19 @@ class KeyedArchive(object):
         value = plist_dictionary.valueForKeyPath_(keypath)
         archive, error = cls.archive_from_bytes(value.bytes())
         print archive.dump_string()
-        
+    
     @classmethod
-    def sanitize_row(cls, row):
-        return ['(null)' if i is None else i for i in row]
-
+    def dump_archive_from_file(cls, archive_file, encoding):
+        data = archive_file.read()
+        
+        data = KeyedArchiveInputData.guess_encoding(data, encoding)
+        archive, error = cls.archive_from_bytes(data.data())
+        if not archive:
+            if error:
+                error = unicode(error).encode('utf-8')
+            raise Exception('Unable to decode a keyed archive from input data: {}'.format(error))
+        print archive.dump_string()
+    
 
 class KeyedArchiveTool(object):
 
@@ -403,6 +525,8 @@ class KeyedArchiveTool(object):
             self.run_sqlite()
         elif self.args.plist_path:
             self.run_plist()
+        else:
+            self.run_file()
         
     def run_sqlite(self):
         conn = sqlite3.connect(self.args.sqlite_path)
@@ -410,11 +534,21 @@ class KeyedArchiveTool(object):
 
     def run_plist(self):
         KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath)
+    
+    def run_file(self):
+        if self.args.infile is None:
+            self.parser().print_help()
+            exit(0)
+        KeyedArchive.dump_archive_from_file(self.args.infile, self.args.encoding)
 
     @classmethod
-    def main(cls):
+    def parser(cls):
         parser = argparse.ArgumentParser(description='NSKeyedArchive tool')
 
+        file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
+        file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
+        file_group.add_argument('--encoding', choices='auto hex base64 none'.split(), default='auto', help='The binary-to-text encoding, if any. The default is auto.')
+        
         sqlite_group = parser.add_argument_group(title='Reading from SQLite databases', description='Read the serialized archive from SQLite DB. You need to pass at least the sqlite_path, sqlite_table, and sqlite_column options.')
         sqlite_group.add_argument('--sqlite_path', help='The path to the SQLite database file')
         sqlite_group.add_argument('--sqlite_table', help='SQLite DB table name')
@@ -425,7 +559,11 @@ class KeyedArchiveTool(object):
         plist_group.add_argument('--plist_path', help='The path to the plist file')
         plist_group.add_argument('--plist_keypath', help='The key/value coding key path to the object in the plist that contains the serialized keyed archiver data.')
 
-        cls(parser.parse_args()).run()
+        return parser
+
+    @classmethod
+    def main(cls):
+        cls(cls.parser().parse_args()).run()
 
 if __name__ == '__main__':
     KeyedArchiveTool.main()
