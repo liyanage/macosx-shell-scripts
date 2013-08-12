@@ -7,6 +7,7 @@
 # See https://github.com/liyanage/macosx-shell-scripts
 #
 
+import os
 import sys
 import sqlite3
 import argparse
@@ -15,7 +16,8 @@ import re
 import objc
 import base64
 import collections
-
+import tempfile
+import subprocess
 
 class KeyedArchiveObjectGraphNode(object):
 
@@ -503,7 +505,14 @@ class KeyedArchive(object):
         print archive.dump_string()
     
     @classmethod
-    def dump_archive_from_file(cls, archive_file, encoding):
+    def dump_archive_from_file(cls, archive_file, encoding, output_file=None):
+        if not output_file:
+            output_file = sys.stdout
+        archive = cls.archive_from_file(archive_file, encoding)
+        print >> output_file, archive.dump_string().encode('utf-8')
+
+    @classmethod
+    def archive_from_file(cls, archive_file, encoding):
         data = archive_file.read()
         
         data = KeyedArchiveInputData.guess_encoding(data, encoding)
@@ -512,7 +521,7 @@ class KeyedArchive(object):
             if error:
                 error = unicode(error).encode('utf-8')
             raise Exception('Unable to decode a keyed archive from input data: {}'.format(error))
-        print archive.dump_string()
+        return archive
     
 
 class KeyedArchiveTool(object):
@@ -521,7 +530,16 @@ class KeyedArchiveTool(object):
         self.args = args
 
     def run(self):
-        if self.args.sqlite_path:
+    
+        # If the ThisServiceMode env variable is set
+        # (see http://wafflesoftware.net/thisservice/ for details),
+        # switch to filter mode
+        if os.environ.get('ThisServiceMode'):
+            self.args.service_mode = True
+        
+        if self.args.service_mode:
+            self.run_service()
+        elif self.args.sqlite_path:
             self.run_sqlite()
         elif self.args.plist_path:
             self.run_plist()
@@ -540,6 +558,15 @@ class KeyedArchiveTool(object):
             self.parser().print_help()
             exit(0)
         KeyedArchive.dump_archive_from_file(self.args.infile, self.args.encoding)
+    
+    def run_service(self):
+        temp = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
+        try:
+            KeyedArchive.dump_archive_from_file(sys.stdin, self.args.encoding, output_file=temp)
+        except Exception as e:
+            temp.write('Unable to decode NSKeyedArchive: {}'.format(e))
+        temp.close()
+        subprocess.call(['open', '-a', 'Safari', temp.name])
 
     @classmethod
     def parser(cls):
@@ -548,6 +575,7 @@ class KeyedArchiveTool(object):
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
         file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
         file_group.add_argument('--encoding', choices='auto hex base64 none'.split(), default='auto', help='The binary-to-text encoding, if any. The default is auto.')
+        file_group.add_argument('--service_mode', action='store_true', help='Enable OS X service mode. Take input from stdin with auto-detected encoding and write the result to a temporary text file and open it with Safari.')
         
         sqlite_group = parser.add_argument_group(title='Reading from SQLite databases', description='Read the serialized archive from SQLite DB. You need to pass at least the sqlite_path, sqlite_table, and sqlite_column options.')
         sqlite_group.add_argument('--sqlite_path', help='The path to the SQLite database file')
