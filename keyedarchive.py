@@ -18,6 +18,7 @@ import base64
 import collections
 import tempfile
 import subprocess
+import logging
 
 class KeyedArchiveObjectGraphNode(object):
 
@@ -334,14 +335,17 @@ class KeyedArchiveInputData(object):
     def guess_encoding(cls, data, encoding='auto'):
         if encoding == 'none':
             return cls(data)
-
+        logging.debug('encoding: {}'.format(encoding))
         subclasses = cls.__subclasses__()
 
         if encoding == 'auto':
             items = []
             for subclass in subclasses:
-                item = subclass(data)
-                items.append(item)
+                try:
+                    item = subclass(data)
+                    items.append(item)
+                except:
+                    pass
             
             def item_comparator(a, b):
                 length_comparison = cmp(b.encoded_data_length(), a.encoded_data_length())
@@ -355,7 +359,7 @@ class KeyedArchiveInputData(object):
             if items[0].encoded_data_length() == 0:
                 # fall back to 'none'
                 item = cls(data)
-#            print 'Encoding "auto" picked encoding class {}'.format(type(item))
+            logging.debug('Encoding "auto" picked encoding class {}'.format(type(item)))
             return item
 
         for subclass in subclasses:
@@ -531,6 +535,9 @@ class KeyedArchiveTool(object):
 
     def run(self):
     
+        if self.args.verbose:
+            logging.basicConfig(level=logging.DEBUG)
+    
         # If the ThisServiceMode env variable is set
         # (see http://wafflesoftware.net/thisservice/ for details),
         # switch to filter mode
@@ -571,6 +578,7 @@ class KeyedArchiveTool(object):
     @classmethod
     def parser(cls):
         parser = argparse.ArgumentParser(description='NSKeyedArchive tool')
+        parser.add_argument('--verbose', action='store_true', help='Enable some additional debug logging output')
 
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
         file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
