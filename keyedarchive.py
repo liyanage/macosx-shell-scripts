@@ -475,7 +475,8 @@ class KeyedArchive(object):
             error = None
             if blob:
                 archive, error = cls.archive_from_bytes(blob)
-            archive_data_row = ArchiveDataRow(archive, dict(zip(extra_columns, extra_fields)), error)
+            extra_data = dict(zip(extra_columns, extra_fields)) if extra_columns else None
+            archive_data_row = ArchiveDataRow(archive, extra_data, error)
             archives.append(archive_data_row)
         return archives
 
