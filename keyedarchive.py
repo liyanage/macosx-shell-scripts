@@ -41,6 +41,13 @@ class KeyedArchiveObjectGraphNode(object):
             return text
         indent = '|' + ' ' * (indent_count - 1)
         return ''.join(lines[:1] + [indent + line for line in lines[1:]])
+
+    def wrap_text_to_line_length(self, text, length):
+        return [text[i:i + length] for i in range(0, len(text), length)]
+
+    def b64encode_and_wrap(self, bytes):
+        dump = base64.b64encode(bytes)
+        return '\n'.join(self.wrap_text_to_line_length(dump, 76))
     
     def __getitem__(self, key):
         raise Exception('{} must override __getitem__()'.format(self.__class__))
@@ -175,13 +182,8 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        # TODO: same treatment in NSData? Factor out?
-        dump = base64.b64encode(self.serialized_representation['NS.data'].bytes())
-        wrapped_dump_lines = []
-        for i in range(0, len(dump), 76):
-            line = dump[i:i + 76]
-            wrapped_dump_lines.append(line)
-        return u'<NSMutableData length {}>\n{}'.format(self.serialized_representation['NS.data'].length(), '\n'.join(wrapped_dump_lines))
+        b64dump = self.b64encode_and_wrap(self.serialized_representation['NS.data'].bytes())
+        return u'<NSMutableData length {}>\n{}'.format(self.serialized_representation['NS.data'].length(), b64dump)
 
 
 class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
@@ -191,7 +193,8 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
         return cls.is_nsdata(serialized_representation)
 
     def dump_string(self, seen=None):
-        return u'<NSData length {} bytes {}>'.format(self.serialized_representation.length(), base64.b64encode(self.serialized_representation.bytes()))
+        b64dump = self.b64encode_and_wrap(self.serialized_representation.bytes())
+        return u'<NSData length {}>\n{}'.format(self.serialized_representation.length(), b64dump)
 
 
 class KeyedArchiveObjectGraphBoolNode(KeyedArchiveObjectGraphNode):
