@@ -175,7 +175,13 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        return u'<NSMutableData length {} bytes {}>'.format(self.serialized_representation['NS.data'].length(), base64.b64encode(self.serialized_representation['NS.data'].bytes()))
+        # TODO: same treatment in NSData? Factor out?
+        dump = base64.b64encode(self.serialized_representation['NS.data'].bytes())
+        wrapped_dump_lines = []
+        for i in range(0, len(dump), 76):
+            line = dump[i:i + 76]
+            wrapped_dump_lines.append(line)
+        return u'<NSMutableData length {}>\n{}'.format(self.serialized_representation['NS.data'].length(), '\n'.join(wrapped_dump_lines))
 
 
 class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
@@ -183,10 +189,6 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
         return cls.is_nsdata(serialized_representation)
-
-#     def resolve_references(self, archive):
-#         super(KeyedArchiveObjectGraphNSDataNode, self).resolve_references(archive)
-#         del(self.properties['NS.data'])
 
     def dump_string(self, seen=None):
         return u'<NSData length {} bytes {}>'.format(self.serialized_representation.length(), base64.b64encode(self.serialized_representation.bytes()))
