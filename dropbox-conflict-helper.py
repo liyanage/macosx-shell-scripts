@@ -9,6 +9,7 @@
 
 import argparse
 import os
+import sys
 import re
 import subprocess
 
@@ -47,6 +48,7 @@ class Tool(object):
         assert os.path.exists(self.dropbox_path), 'Invalid Dropbox path {}'.format(dropbox_path)
         self.duplicates = []
         self.duplicate_map = {}
+        self.running_from_worksheet = 'BBEDIT_CLIENT_INTERACTIVE' in os.environ
     
     def run(self):
         self.gather_duplicates()
@@ -69,11 +71,18 @@ class Tool(object):
                 duplicate.add_duplicate_path(os.path.join(root, file))
 
     def process_duplicates(self):
+        if not self.running_from_worksheet:
+            bbedit = subprocess.Popen(['bbedit', '-s'], stdin=subprocess.PIPE)
+            
         for duplicate in self.duplicates:
-            print '# {}'.format(duplicate)
-            print duplicate.summary()
-            print duplicate.worksheet()
-            print ''
+            text = '# {}'.format(duplicate)
+            text += duplicate.summary()
+            text += duplicate.worksheet()
+            text += '\n'
+            if self.running_from_worksheet:
+                sys.stdout.write(text)
+            else:
+                bbedit.stdin.write(text)
 
     def duplicate_for_original_path(self, path):
         duplicate = self.duplicate_map.get(path, None)
