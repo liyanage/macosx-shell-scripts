@@ -73,6 +73,10 @@ class Tool(object):
                 duplicate.add_duplicate_path(os.path.join(root, file))
 
     def process_duplicates(self):
+        if not self.duplicates:
+            print 'No conflicted files found'
+            return
+            
         if not self.running_from_worksheet:
             bbedit = subprocess.Popen(['bbedit', '-s'], stdin=subprocess.PIPE)
             
