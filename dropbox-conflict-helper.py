@@ -56,6 +56,8 @@ class Tool(object):
     
     def gather_duplicates(self):
         for root, dirs, files in os.walk(self.dropbox_path):
+            if '.dropbox.cache' in dirs:
+                del(dirs[dirs.index('.dropbox.cache')])
             for file in files:
                 match = re.match(r'^(.+) \([^\(]+ conflicted copy .+\)(.*)$', file)
                 if not match:
