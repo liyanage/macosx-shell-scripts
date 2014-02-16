@@ -81,7 +81,7 @@ class Tool(object):
             bbedit = subprocess.Popen(['bbedit', '-s'], stdin=subprocess.PIPE)
             
         for duplicate in self.duplicates:
-            text = '# {}'.format(duplicate)
+            text = '# {}\n'.format(duplicate)
             text += duplicate.summary()
             text += duplicate.worksheet()
             text += '\n'
