@@ -15,12 +15,10 @@ fi
 cd git-doc
 sudo git pull
 
-GIT_DOWNLOAD_PAGE_URL=http://git-scm.com/download/mac
-GIT_DMG_URL=$(curl -s $GIT_DOWNLOAD_PAGE_URL | grep https://git-osx-installer | sed -E 's#.*(https://.*.dmg).*#\1#' | uniq)
-[ -z $GIT_DMG_URL ] && { echo Unable to find Git DMG URL on $GIT_DOWNLOAD_PAGE_URL; false; }
-
+GIT_DOWNLOAD_PAGE_URL=http://sourceforge.net/projects/git-osx-installer/files/
+GIT_DMG_URL=$(curl -s $GIT_DOWNLOAD_PAGE_URL | grep http://sourceforge.net/projects/git-osx-installer | sed -E 's#.*(http://.*.dmg).*#\1#')
 GIT_DMG=$TMPDIR/git.dmg
-curl -o $GIT_DMG $GIT_DMG_URL
+curl -L -o $GIT_DMG $GIT_DMG_URL
 
 VOLUME_PATH=$(hdiutil attach $GIT_DMG | grep /Volumes | sed -E 's#.*(/Volumes.*)#\1#')
 [ -e "$VOLUME_PATH" ] || { echo Unable to mount $GIT_DMG, volume not found; false; }
