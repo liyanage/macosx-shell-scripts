@@ -293,7 +293,7 @@ class Tool(object):
     @classmethod
     def ensure_superuser(cls):
         if os.getuid() != 0:
-            print >> sys.stderr, 'Relaunching with sudo for superuser access'
+            print >> sys.stderr, 'Relaunching with sudo'
             os.execv('/usr/bin/sudo', ['/usr/bin/sudo', '-E'] + sys.argv)
 
     @classmethod
