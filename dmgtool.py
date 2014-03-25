@@ -56,6 +56,13 @@ class DiskImage(object):
         cmd = ['mount', '-plist', mount_path]
         self.mount_data = self.run_hdiutil_plist_command(cmd)
 
+    def basename(self):
+        return os.path.basename(self.dmg_url_or_path)
+    
+    def basename_without_extension(self):
+        name, extension = os.path.splitext(self.basename())
+        return name
+
     def mount_point(self):
         mount_points = []
         for item in self.mount_data['system-entities']:
@@ -98,7 +105,7 @@ class AbstractSubcommand(object):
     @classmethod
     def configure_argument_parser(cls, parser):
         pass
-
+    
     @classmethod
     def subcommand_name(cls):
         return '-'.join([i.lower() for i in re.findall(r'([A-Z][a-z]+)', re.sub(r'^Subcommand', '', cls.__name__))])
@@ -125,47 +132,46 @@ class SubcommandInfo(AbstractSubcommand):
         parser.add_argument('dmg_url_or_path', help='DMG URL or path')
 
 
-class SubcommandInstallApplication(AbstractSubcommand):
-    """
-    Mount a DMG and install a toplevel .app into /Applications.
-    """
+class ImageMountingSubcommand(AbstractSubcommand):
     
     def run(self):
         image = DiskImage(self.args.dmg_url_or_path)
         print >> sys.stderr, 'Mounting {}...'.format(self.args.dmg_url_or_path)
         image.mount()
         print >> sys.stderr, 'Mounted at {}'.format(image.mount_point())
-        self.install_apps_from_image_path(image.mount_point())
-        image.unmount()
 
-        if self.args.delete and not image.is_remote:
-            self.trash_path(self.args.dmg_url_or_path)
-    
-    def install_apps_from_image_path(self, path):
-        apps = glob.glob('{}/*.app'.format(path))
-        if not apps:
-            return
-        
-        for app_path in apps:
-            basename = os.path.basename(app_path)
-            destination_path = os.path.join('/Applications', basename)
-            if os.path.exists(destination_path):
-                self.trash_path(destination_path)
-            self.copy_path(app_path, destination_path)
+        try:
+            self.process_image(image)
+            if self.args.delete and not image.is_remote:
+                self.trash_path(self.args.dmg_url_or_path)
+        finally:
+            print >> sys.stderr, 'Unmounting {}...'.format(image.mount_point())
+            image.unmount()
+
+    def process_image(self, image):
+        raise NotImplementedError()
 
     def trash_path(self, path):
         basename = os.path.basename(path)
         user_trash_path = os.path.expanduser('~/.Trash')
         trash_path = os.path.join(user_trash_path, basename)
-        if os.path.exists(trash_path):
-            root, ext = os.path.splitext(basename)
-            timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-            trash_basename = '{}-{}{}'.format(root, timestamp, ext)
-            trash_path = os.path.join(user_trash_path, trash_basename)
+        trash_path, did_rename = self.unique_path_for_path(trash_path)
+        if did_rename:
             print >> sys.stderr, 'Trashing {} to {}'.format(path, trash_path)
         else:
             print >> sys.stderr, 'Trashing {}'.format(path)
         shutil.move(path, trash_path)
+    
+    def unique_path_for_path(self, path):
+        if not os.path.exists(os.path.expanduser(path)):
+            return path, False
+
+        head, tail = os.path.split(path)
+        name, ext = os.path.splitext(tail)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        new_basename = '{}-{}{}'.format(name, timestamp, ext)
+        new_path = os.path.join(head, new_basename)
+        return new_path, True
 
     def copy_path(self, source_path, destination_path):        
         cmd = ['cp', '-pR', source_path, destination_path]
@@ -176,6 +182,80 @@ class SubcommandInstallApplication(AbstractSubcommand):
     def configure_argument_parser(cls, parser):
         parser.add_argument('dmg_url_or_path', help='DMG URL or path')
         parser.add_argument('-d', '--delete', action='store_true', help='Delete disk image file after installation')
+
+
+class SubcommandInstallApplication(ImageMountingSubcommand):
+    """
+    Mount a DMG and install a toplevel .app into /Applications.
+    """
+
+    def process_image(self, image):
+        apps = glob.glob('{}/*.app'.format(image.mount_point()))
+        if not apps:
+            return
+        
+        for app_path in apps:
+            basename = os.path.basename(app_path)
+            destination_path = os.path.join('/Applications', basename)
+            if os.path.exists(destination_path):
+                self.trash_path(destination_path)
+            self.copy_path(app_path, destination_path)
+
+
+class SubcommandUnpackMasPackage(ImageMountingSubcommand):
+    """
+    Mount a DMG and unpack a toplevel Mac App Store package to the Desktop
+    """
+    
+    # Useful productutil tips: http://shapeof.com/archives/2011/07/stupid_productutil_tricks.html
+
+    def process_image(self, image):
+        packages = glob.glob('{}/*.pkg'.format(image.mount_point()))
+        if not packages:
+            return
+            
+        if self.args.install:
+            self.install_packages(packages)
+        else:
+            self.unpack_packages(packages, image)
+
+    def install_packages(self, packages):
+        for package_path in packages:
+            print >> sys.stderr, 'Installing {}...'.format(package_path)
+            cmd = ['/usr/sbin/installer', '-store', '-pkg', package_path, '-target', '/']
+            process = subprocess.Popen(cmd)
+            process.communicate()
+    
+    def unpack_packages(self, packages, image):
+        image_basename = image.basename_without_extension()
+        single_package = len(packages) == 1
+        for package_path in packages:
+            basename = os.path.basename(package_path)
+            if single_package:
+                destination_path = os.path.join('~/Desktop', 'mas-payload-{}'.format(image_basename))
+            else:
+                package_name, extension = os.path.splitext(basename)
+                destination_path = os.path.join('~/Desktop', 'mas-payload-{}-{}'.format(image_basename, package_name))
+            
+            destination_path, did_rename = self.unique_path_for_path(destination_path)
+            destination_path = os.path.expanduser(destination_path)
+            
+            print >> sys.stderr, 'Extracting "{}" payload to {}...'.format(basename, destination_path)
+            cmd = ['/usr/libexec/productutil', '--package', package_path, '--expand', destination_path]
+            process = subprocess.Popen(cmd)
+            process.communicate()
+            
+            if single_package and not process.returncode:
+                payload = glob.glob('{}/*.pkg/Payload'.format(destination_path))
+                if payload:
+                    cmd = ['open', payload[0]]
+                    process = subprocess.Popen(cmd)
+                    process.communicate()
+
+    @classmethod
+    def configure_argument_parser(cls, parser):
+        super(SubcommandUnpackMasPackage, cls).configure_argument_parser(parser)
+        parser.add_argument('-i', '--install', action='store_true', help='Install package to its intended location, presumably /Applications, instead of unpacking the payload to ~/Desktop')
 
 
 class ANSIColor(object):
