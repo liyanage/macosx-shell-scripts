@@ -199,6 +199,7 @@ class SubcommandInstallApplication(ImageMountingSubcommand):
             destination_path = os.path.join('/Applications', basename)
             if os.path.exists(destination_path):
                 self.trash_path(destination_path)
+            print >> sys.stderr, 'Installing {} to {}'.format(app_path, destination_path)
             self.copy_path(app_path, destination_path)
 
 
