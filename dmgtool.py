@@ -16,6 +16,7 @@ import argparse
 import datetime
 import plistlib
 import tempfile
+import textwrap
 import subprocess
 import contextlib
 import collections
@@ -302,7 +303,49 @@ class ANSIColor(object):
 
 
 class Tool(object):
-    """Disk image utility"""
+    """
+    This is a convenience tool for mounting a disk image, doing something with its contents, and then unmounting it again. It can currently do two things with the contents of a dmg:
+
+
+    1.) Installing an .app bundle
+
+    For .dmg files that contain an .app bundle at the top level, it will install that bundle into /Applications:
+
+        $ dmgtool.py install-application /path/to/dmg
+
+    2.) Unpack or Install a MAS installer package
+
+    For .dmg files that contain a MAS style .pkg file at the top, it can either:
+
+    - unpack the payload to the Desktop for a quick inspection
+    - install the package into /Applications with the "installer" command
+
+    This example unpacks the package to the Desktop:
+
+        $ dmgtool.py unpack-mas-package /path/to/dmg
+
+    This installs it into /Applications:
+
+        $ dmgtool.py unpack-mas-package -i /path/to/dmg
+
+
+    Some bonus features:
+
+    - With the -d flag, it will optionally trash the .dmg file after unmounting it.
+
+    - You can give it the URL of a DMG instead of a path. This mounts the image directly from a web server (if the server supports it). Example:
+
+        $ dmgtool.py unpack-mas-package https://example.com/path/to/mas-packaged-app.dmg
+
+    and this installs it:
+
+        $ dmgtool.py unpack-mas-package -i https://example.com/path/to/mas-packaged-app.dmg
+
+    This example installs an application bundle directly from a web server into /Applications:
+
+        $ dmgtool.py install-application https://example.com/path/to/app.dmg
+
+    """
 
     def subcommand_map(self):
         return {s.subcommand_name(): s for s in AbstractSubcommand.subclass_map().values() if s.__name__.startswith('Subcommand')}
@@ -356,7 +399,7 @@ class Tool(object):
         if not self.resolve_subcommand_abbreviation(subcommand_map):
             exit(1)
 
-        parser = argparse.ArgumentParser(description=self.__doc__)
+        parser = argparse.ArgumentParser(description=textwrap.dedent(self.__doc__), formatter_class=argparse.RawDescriptionHelpFormatter)
         self.configure_argument_parser(parser)
         parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose debug logging')
         subparsers = parser.add_subparsers(title='Subcommands', dest='subcommand_name')
