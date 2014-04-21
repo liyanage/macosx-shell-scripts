@@ -24,7 +24,7 @@ class DistributedNotificationListener(object):
     
     def didReceiveNotification_(self, notification):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        print '{} name={} userInfo={}'.format(timestamp, notification.name(), notification.userInfo())
+        print '{} name={} object={} userInfo={}'.format(timestamp, notification.name(), notification.object(), notification.userInfo())
 
     def terminate(self):
         print 'Stopping'
