@@ -140,7 +140,7 @@ class Tool(object):
                 del(dirs[dirs.index('.dropbox.cache')])
 
             for file in files:
-                match = re.match(r'^(.+?) \([^\(]+ conflicted copy .+\)(.*)$', file)
+                match = re.match(r'^(.*?) \([^\(]+ conflicted copy .+\)(.*)$', file)
                 if not match:
                     continue
 
