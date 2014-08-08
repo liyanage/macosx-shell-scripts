@@ -39,6 +39,9 @@ class DiskImage(object):
         if not self.info_data:
             cmd = ['imageinfo', '-plist', self.dmg_url_or_path]
             self.info_data = self.run_hdiutil_plist_command(cmd)
+            if not self.info_data:
+                print >> sys.stderr, 'Unable to get information about image'
+                sys.exit(0)
         return self.info_data
     
     def has_license_agreement(self):
