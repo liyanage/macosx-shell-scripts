@@ -20,6 +20,6 @@ with open('/dev/tty') as tty:
 max_bar_length = w / 2 - 10
 scale = float(max_bar_length) / sorted_items[0][1]
 
-for location, count in sorted_items:
+for item, count in sorted_items:
     bar_length = int(scale * count)
-    print '{:{width}}  {:4}  {}'.format(location.strip()[:w/2], count, '*' * bar_length, width=w / 2)
+    print '{:{width}}  {:4}  {}'.format(item.strip()[:w/2], count, '*' * bar_length, width=w / 2)
