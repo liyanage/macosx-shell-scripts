@@ -21,11 +21,11 @@ if not total_count:
 with open('/dev/tty') as tty:
     h, w = [int(x) for x in subprocess.check_output(['stty', 'size'], stdin=tty).split()]
     
-max_bar_length = w / 2 - 12
+item_width = w / 2
+max_bar_length = item_width - 12
 scale = float(max_bar_length) / sorted_items[0][1]
-
 
 for item, count in sorted_items:
     bar_length = int(scale * count)
     percentage = count * 100 / total_count
-    print '{:{width}}  {:4} {:>3}% {}'.format(item.strip()[:w/2], count, percentage, '*' * bar_length, width=w / 2)
+    print '{:{width}}  {:4} {:>3}% {}'.format(item.strip()[:item_width], count, percentage, '*' * bar_length, width=item_width)
