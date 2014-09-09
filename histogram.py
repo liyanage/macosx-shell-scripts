@@ -17,10 +17,11 @@ import collections
 
 class HistogramCounter(object):
     
-    def __init__(self, item_regex=None, cost_regex=None, cost_coefficient=None):
+    def __init__(self, item_regex=None, cost_regex=None, cost_coefficient=None, expand_tabs=None):
         self.item_regex = item_regex
         self.cost_regex = cost_regex
         self.cost_coefficient = cost_coefficient
+        self.expand_tabs = expand_tabs
         self.total_count = 0
         self.total_cost = 0
         self.setup_data()
@@ -78,6 +79,8 @@ class HistogramCounter(object):
         scale = float(max_bar_length) / sorted_items[0][1].total_cost
 
         for item, cost_info in sorted_items:
+            if self.expand_tabs:
+                item = item.expandtabs(self.expand_tabs)
             bar_length = int(scale * cost_info.total_cost)
             percentage = int(cost_info.total_cost * 100 / self.total_cost)
             print '{:{width}}  {:4} {:{width_cost}.0f} {:>3}% {}'.format(item.strip()[:item_width], cost_info.count, cost_info.total_cost, percentage, '*' * bar_length, width=item_width, width_cost=max_len_total_cost)
@@ -87,7 +90,7 @@ class Tool(object):
 
     def __init__(self, args):
         self.args = args
-        self.counter = HistogramCounter(self.args.item_regex, self.args.cost_regex, self.args.cost_scale)
+        self.counter = HistogramCounter(self.args.item_regex, self.args.cost_regex, self.args.cost_scale, self.args.expand_tabs)
 
     def run(self):
         for input_file in self.args.input_files:
@@ -105,6 +108,7 @@ class Tool(object):
         parser.add_argument('-i', '--item-regex', type=re.compile, help='Optional regular expression to select part of each input line for counting purposes')
         parser.add_argument('-c', '--cost-regex', type=re.compile, help='Optional regular expression to select a cost value in each input line')
         parser.add_argument('-s', '--cost-scale', type=float, help='Optional cost scale coefficient')
+        parser.add_argument('-t', '--expand-tabs', type=int, default=4, help='Optional tab expansion column width. A value of 0 means do not expand tabs. Default is 4.')
 
         args = parser.parse_args()
         if args.verbose:
