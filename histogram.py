@@ -81,6 +81,7 @@ class DefaultCounter(BaseCounter):
                 self.total_cost += cost
         
         self.data = collections.defaultdict(CostInfo)
+        self.dump_buckets = False
 
     def update_for_item_and_cost(self, item_identifier, cost):
         self.data[item_identifier].update(cost)
@@ -129,7 +130,7 @@ class BucketCounter(BaseCounter):
         self.data = collections.defaultdict(BucketCostInfo)
 
     def update_for_item_and_cost(self, item_identifier, cost):
-        bucket_id = int(math.log(cost, 2))
+        bucket_id = int(math.ceil(math.log(cost, 2)))
         self.data[bucket_id].update(cost, item_identifier)
 
     def sorted_buckets(self):
@@ -139,29 +140,32 @@ class BucketCounter(BaseCounter):
         sorted_buckets = self.sorted_buckets()
         min_bucket, max_bucket = sorted_buckets[-1][0], sorted_buckets[0][0]
         max_count = max(self.data.values(), key=lambda x: x.count).count
+        
+        max_bucket_label_len = len(str(2 ** max_bucket))
 
         terminal_width = self.terminal_width()
-        item_width = terminal_width / 2
-        max_bar_length = item_width - (13 + 0)
+        item_width = max_bucket_label_len
+        max_bar_length = min(terminal_width - (item_width + 16), 60)
         scale = float(max_bar_length) / max_count
 
         for i in range(min_bucket, max_bucket + 1):
             bucket = self.data.get(i, self.zero_bucket)
             bar_length = int(scale * bucket.count)
-            percentage = int(bucket.count * 100 / self.total_count)
-            print '{:{width}}  {:5}  {:>3}% {}'.format(2 ** i, bucket.count, percentage, '*' * bar_length, width=item_width)
+            percentage = float(bucket.count) * 100 / self.total_count
+            print '{:{width}}  {:5}  {:>4.1f}% {}'.format(2 ** i, bucket.count, percentage, '*' * bar_length, width=item_width)
+
+        if not self.dump_buckets:
+            return
 
         for i in range(min_bucket, max_bucket + 1):
             bucket = self.data.get(i, self.zero_bucket)
             if not bucket.count:
                 continue
-
             bar_length = int(scale * bucket.count)
             percentage = int(bucket.count * 100 / self.total_count)
-            print '{}'.format(2 ** i)
-            print '{:>3}% {}'.format(percentage, '*' * bar_length)
+            print '{:<{max_bucket_label_len}} {:>3}% {}'.format(2 ** i, percentage, '*' * bar_length, max_bucket_label_len=max_bucket_label_len)
             for item, count in bucket.item_counter.most_common(10):
-                print '{:4} {}'.format(count, item)
+                print '{:4} {}'.format(count, item.strip())
             print
 
 
@@ -169,8 +173,13 @@ class Tool(object):
 
     def __init__(self, args):
         self.args = args
-        counter_class = BucketCounter if self.args.cost_distribution else DefaultCounter
+        if self.args.cost_distribution:
+            counter_class = BucketCounter
+        else:
+            counter_class = DefaultCounter
         self.counter = counter_class(self.args.item_regex, self.args.cost_regex, self.args.cost_scale, self.args.expand_tabs)
+        if self.args.cost_distribution:
+            self.counter.dump_buckets = self.args.dump_buckets
 
     def run(self):
         for input_file in self.args.input_files:
@@ -190,6 +199,7 @@ class Tool(object):
         parser.add_argument('-s', '--cost-scale', type=float, help='Optional cost scale coefficient')
         parser.add_argument('-t', '--expand-tabs', type=int, default=4, help='Optional tab expansion column width. A value of 0 means do not expand tabs. Default is 4.')
         parser.add_argument('-d', '--cost-distribution', action='store_true', help='Plot and order by the distribution of the cost values')
+        parser.add_argument('-b', '--dump-buckets', action='store_true', help='When using the --cost-distribution option, also dump the top items in each bucket')
 
         args = parser.parse_args()
         if args.verbose:
