@@ -89,9 +89,7 @@ class Tool(object):
         self.args = args
 
     def run(self):
-        output = tempfile.TemporaryFile()
         syslog = subprocess.Popen(['syslog', '-w', '0', '-k', 'Facility', 'kern'], stdout=subprocess.PIPE)
-        
         time.sleep(1)
 
         dump_result = self.request_dump()
