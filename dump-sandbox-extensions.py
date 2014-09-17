@@ -23,6 +23,7 @@ class DumpOutputParser(object):
         self.state = 'start'
         self.setup_state_table()
         self.current_section = None
+        self.last_line = None
     
     def setup_state_table(self):
         Rule = collections.namedtuple('Rule', ['regex', 'new_state', 'action'])
@@ -37,6 +38,7 @@ class DumpOutputParser(object):
                 Rule(re.compile('.*kernel\[0\] <Notice>: }'), 'stopped', 'stop'),
             ),
             'reading_section': (
+                Rule(re.compile('--- last message repeated (\d+) times? ---'), None, 'repeat_last_line'),
                 Rule(re.compile('.*kernel\[0\] <Notice>: - }'), 'reading_body', None),
                 Rule(re.compile('.*kernel\[0\] <Notice>:.*file: (.+) \(.*\); flags=.*'), None, 'capture_line'),
                 Rule(re.compile('.*kernel\[0\] <Notice>:'), None, None),
@@ -75,9 +77,12 @@ class DumpOutputParser(object):
             if self.current_section:
                 print '# {}'.format(self.current_section)
                 self.current_section = None
-            print '{}'.format(text_match.group(1))
+            self.last_line = text_match.group(1)
+            print self.last_line
         elif matched_rule.action == 'capture_section':
             self.current_section = text_match.group(1)
+        elif matched_rule.action == 'repeat_last_line':
+            print self.last_line
         else:
             raise Exception('Unknown action for input line "{}"'.format(line))
     
