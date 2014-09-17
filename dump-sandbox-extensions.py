@@ -39,6 +39,7 @@ class DumpOutputParser(object):
             'reading_section': (
                 Rule(re.compile('.*kernel\[0\] <Notice>: - }'), 'reading_body', None),
                 Rule(re.compile('.*kernel\[0\] <Notice>:.*file: (.+) \(.*\); flags=.*'), None, 'capture_line'),
+                Rule(re.compile('.*kernel\[0\] <Notice>:'), None, None),
             )            
         }
     
