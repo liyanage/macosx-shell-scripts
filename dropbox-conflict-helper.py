@@ -140,7 +140,7 @@ class Tool(object):
                 del(dirs[dirs.index('.dropbox.cache')])
 
             for file in files:
-                match = re.match(r'^(.*?) \([^\(]+ conflicted copy .+\)(.*)$', file)
+                match = re.match(r'^(.*?) \([^\(]+ conflicted copy [^)]+\)(.*)$', file)
                 if not match:
                     continue
 
@@ -154,6 +154,8 @@ class Tool(object):
                     original_name += extension
 
                 full_path = os.path.join(root, original_name)
+#                print file
+                assert os.path.exists(full_path), 'Invalid path: {}'.format(full_path)
                 duplicate_set = self.duplicate_set_for_original_path(full_path)
                 duplicate_set.add_duplicate_path(os.path.join(root, file))
 
@@ -166,6 +168,8 @@ class Tool(object):
             bbedit = subprocess.Popen(['bbedit', '-s'], stdin=subprocess.PIPE)
             
         for duplicate_set in self.duplicate_sets:
+#             if duplicate_set.all_duplicates_are_identical():
+#                 continue
             text = '# {}\n'.format(duplicate_set)
             text += duplicate_set.summary(keep_newest=self.args.keep_newest)
             text += duplicate_set.worksheet_content(keep_newest=self.args.keep_newest)
