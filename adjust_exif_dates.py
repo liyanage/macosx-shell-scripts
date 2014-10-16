@@ -5,6 +5,8 @@
 # sort them by name, and then change the EXIF date in each one with an 
 # offset of one second per image, ending in the current time.
 #
+# This requires the "exiftool" utility to be installed: http://www.sno.phy.queensu.ca/~phil/exiftool/
+#
 # Maintained at https://github.com/liyanage/macosx-shell-scripts
 #
 
