@@ -29,13 +29,11 @@ class Tool(object):
         paths.reverse()
         now = datetime.datetime.now()
         delta = datetime.timedelta(seconds=1)
-        print now
-        print now + delta
         for path in paths:
             now -= delta
             cmd = ['exiftool', '-AllDates={}'.format(now.strftime('%Y:%m:%d %H:%M:%S')), path]
+            print ' '.join(cmd)
             subprocess.check_call(cmd)
-            print cmd
 
     @classmethod
     def main(cls):
