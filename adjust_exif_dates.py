@@ -37,7 +37,7 @@ class Tool(object):
 
     @classmethod
     def main(cls):
-        parser = argparse.ArgumentParser(description='Description')
+        parser = argparse.ArgumentParser(description='Adjust EXIF dates with exiftool.')
         parser.add_argument('pattern', help='Glob pattern for image files to change')
         parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose debug logging')
 
