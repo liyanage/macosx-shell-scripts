@@ -207,6 +207,21 @@ class SubcommandInstallApplication(ImageMountingSubcommand):
             self.copy_path(app_path, destination_path)
 
 
+class SubcommandInstallRoot(ImageMountingSubcommand):
+    """
+    Mount a DMG and install one or more toplevel .tar.gz roots using darwinup
+    """
+
+    def process_image(self, image):
+        roots = glob.glob('{}/*.tar.gz'.format(image.mount_point()))
+        if not roots:
+            return
+        
+        for root_path in roots:
+            cmd = ['darwinup', 'install', root_path]
+            subprocess.call(cmd)        
+
+
 class SubcommandUnpackMasPackage(ImageMountingSubcommand):
     """
     Mount a DMG and unpack a toplevel Mac App Store package to the Desktop
