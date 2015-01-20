@@ -267,12 +267,27 @@ class SubcommandUnpackMasPackage(ImageMountingSubcommand):
             process = subprocess.Popen(cmd)
             process.communicate()
             
+            for item in ('Resources', 'Distribution'):
+                path = os.path.join(destination_path, item)
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+ 
+            payload_package_path = os.path.join(destination_path, package_name + '.pkg')
+            payload_source_path = os.path.join(payload_package_path, 'Payload')
+            
+            payload_items = os.listdir(payload_source_path)
+            for item in payload_items:
+                path = os.path.join(payload_source_path, item)
+                shutil.move(path, destination_path)
+            
+            shutil.rmtree(payload_package_path)
+ 
             if single_package and not process.returncode:
-                payload = glob.glob('{}/*.pkg/Payload'.format(destination_path))
-                if payload:
-                    cmd = ['open', payload[0]]
-                    process = subprocess.Popen(cmd)
-                    process.communicate()
+                cmd = ['open', destination_path]
+                process = subprocess.Popen(cmd)
+                process.communicate()
 
     @classmethod
     def configure_argument_parser(cls, parser):
