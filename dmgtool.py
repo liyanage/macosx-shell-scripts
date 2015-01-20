@@ -249,16 +249,18 @@ class SubcommandUnpackMasPackage(ImageMountingSubcommand):
     def unpack_packages(self, packages, image):
         image_basename = image.basename_without_extension()
         single_package = len(packages) == 1
+
+        basedir = os.path.expanduser(os.path.join('~/Desktop', image_basename))
+        basedir, did_rename = self.unique_path_for_path(basedir)
+        os.mkdir(basedir)
+
         for package_path in packages:
             basename = os.path.basename(package_path)
             if single_package:
-                destination_path = os.path.join('~/Desktop', 'mas-payload-{}'.format(image_basename))
+                destination_path = basedir
             else:
                 package_name, extension = os.path.splitext(basename)
-                destination_path = os.path.join('~/Desktop', 'mas-payload-{}-{}'.format(image_basename, package_name))
-            
-            destination_path, did_rename = self.unique_path_for_path(destination_path)
-            destination_path = os.path.expanduser(destination_path)
+                destination_path = os.path.join(basedir, package_name)
             
             print >> sys.stderr, 'Extracting "{}" payload to {}...'.format(basename, destination_path)
             cmd = ['/usr/libexec/productutil', '--package', package_path, '--expand', destination_path]
