@@ -64,8 +64,9 @@ class Tool(object):
 
     @classmethod
     def main(cls):
+        action_default = 'auto' if sys.stdout.isatty() else 'toggle'
         parser = argparse.ArgumentParser(description='Hide/show Desktop contents, for presentations / screen recordings / screenshots')
-        parser.add_argument('action', nargs='?', default='toggle', choices=['hide', 'show', 'toggle', 'auto'], help='Action to perform')
+        parser.add_argument('action', nargs='?', default=action_default, choices=['hide', 'show', 'toggle', 'auto'], help='Action to perform')
 
         args = parser.parse_args()
         cls(args).run()
