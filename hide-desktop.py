@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Maintained at https://github.com/liyanage/python-modules
+# Maintained at https://github.com/liyanage/macosx-shell-scripts/
 #
 
 import sys
