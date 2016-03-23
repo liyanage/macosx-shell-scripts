@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIconFile</key>
+	<string></string>
+	<key>CFBundleIdentifier</key>
+	<string>ch.entropy.launchbar.action.hide-desktop</string>
+	<key>CFBundleName</key>
+	<string>Hide/Unhide Desktop</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+	<key>LBAbbreviation</key>
+	<string>hide</string>
+	<key>LBDescription</key>
+	<dict>
+		<key>LBAuthor</key>
+		<string>Marc Liyanage</string>
+		<key>LBTwitter</key>
+		<string>@liyanage</string>
+		<key>LBWebsiteURL</key>
+		<string>http://www.entropy.ch</string>
+	</dict>
+	<key>LBScripts</key>
+	<dict>
+		<key>LBDefaultScript</key>
+		<dict>
+			<key>LBResultType</key>
+			<string>unknown</string>
+			<key>LBScriptName</key>
+			<string>hide-desktop.py</string>
+		</dict>
+	</dict>
+	<key>LBTextInputTitle</key>
+	<string>Shorter Name</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2016 Marc Liyanage</string>
+</dict>
+</plist>
