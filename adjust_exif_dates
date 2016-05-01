@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 #
 # Adjust EXIF dates with exiftool. This will take a batch of JPEG files,

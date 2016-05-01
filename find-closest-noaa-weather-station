@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 #
 # Reads the weather station list from http://weather.gov/xml/current_obs/index.xml
 # and prints the stations sorted by distance to a given lat/long pair

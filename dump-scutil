@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 #
 # dump the contents of all toplevel keys in scutil's toplevel list.
 #
