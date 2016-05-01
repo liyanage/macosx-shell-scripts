@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 #
 # Converts a set of paths (on stdin, one path per line) into a shell brace expression.
 #
