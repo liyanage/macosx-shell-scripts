@@ -182,9 +182,16 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        b64dump = self.b64encode_and_wrap(self.serialized_representation['NS.data'].bytes())
-        return u'<NSMutableData length {}>\n{}'.format(self.serialized_representation['NS.data'].length(), b64dump)
+        b64dump = self.b64encode_and_wrap(self.properties['NS.data'].bytes())
+        return u'<NSMutableData length {}>\n{}'.format(self.properties['NS.data'].length(), b64dump)
 
+    def resolve_references(self, archive):
+        super(KeyedArchiveObjectGraphNSMutableDataNode, self).resolve_references(archive)
+        data_value = self.serialized_representation['NS.data']
+        if data_value:
+            replacement = archive.replacement_object_for_value(data_value)
+            if replacement:
+                self.properties['NS.data'] = replacement.serialized_representation['NS.data']
 
 class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
 
