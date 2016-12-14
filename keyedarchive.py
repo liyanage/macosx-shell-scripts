@@ -471,11 +471,12 @@ class KeyedArchive(object):
         return cls(archive_dictionary), None
 
     @classmethod
-    def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
+    def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql):
         columns = [column_name]
         if extra_columns:
             columns.extend(extra_columns)
-        sql = 'SELECT {} FROM {}'.format(', '.join(columns), table_name)
+        sql = 'SELECT {} FROM {} {}'.format(', '.join(columns), table_name, extra_sql)
+        print sql
         cursor = connection.execute(sql)
 
         ArchiveDataRow = collections.namedtuple('ArchiveDataRow', 'archive extra_data error'.split())
@@ -493,8 +494,8 @@ class KeyedArchive(object):
         return archives
 
     @classmethod
-    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns):
-        rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns)
+    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql=''):
+        rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns, extra_sql)
         for row in rows:
             if row.extra_data:
                 print row.extra_data
@@ -568,7 +569,7 @@ class KeyedArchiveTool(object):
         
     def run_sqlite(self):
         conn = sqlite3.connect(self.args.sqlite_path)
-        KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns)
+        KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns, self.args.extra_sql)
 
     def run_plist(self):
         KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath)
@@ -603,6 +604,7 @@ class KeyedArchiveTool(object):
         sqlite_group.add_argument('--sqlite_table', help='SQLite DB table name')
         sqlite_group.add_argument('--sqlite_column', help='SQLite DB column name')
         sqlite_group.add_argument('--sqlite_extra_column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
+        sqlite_group.add_argument('--sqlite_extra_sql', dest='extra_sql', help='additional SQL code, e.g. for joins')
 
         plist_group = parser.add_argument_group(title='Reading from Property Lists', description='Read the serialized archive from a property list file, usually a preferences file in ~/Library/Preferences. You need to pass the plist_path and plist_keypath options.')
         plist_group.add_argument('--plist_path', help='The path to the plist file')
