@@ -222,6 +222,22 @@ class SubcommandInstallRoot(ImageMountingSubcommand):
             subprocess.call(cmd)        
 
 
+class SubcommandInstallPackage(ImageMountingSubcommand):
+    """
+    Mount a DMG and install one or more toplevel .pkg files
+    """
+
+    def process_image(self, image):
+        packages = glob.glob('{}/*.pkg'.format(image.mount_point()))
+        if not packages:
+            return
+        
+        for package_path in packages:
+            cmd = ['/usr/sbin/installer', '-pkg', package_path, '-target', '/']
+            process = subprocess.Popen(cmd)
+            process.communicate()
+
+
 class SubcommandUnpackMasPackage(ImageMountingSubcommand):
     """
     Mount a DMG and unpack a toplevel Mac App Store package to the Desktop
