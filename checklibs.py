@@ -39,9 +39,9 @@ class MachOFile:
         if not output:
             print >> sys.stderr, 'Unable to load mach header for {0} ({1}), architecture mismatch? Use --arch option to pick architecture'.format(self.image_path.resolved_path, self.arch)
             exit()
-        (keys, values) = output.splitlines()[2:]
+        (keys, values) = output.splitlines()[1:]
         self.header_info = dict(zip(keys.split(), values.split()))
-
+        
     def load_rpaths(self):
         output = self.shell('otool -arch {0} -l "{1}"', [self.arch, self.image_path.resolved_path], fatal = True)
         load_commands = re.split('Load command (\d+)', output)[1:] # skip file name on first line
