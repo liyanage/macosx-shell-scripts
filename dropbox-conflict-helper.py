@@ -155,7 +155,7 @@ class Tool(object):
 
                 full_path = os.path.join(root, original_name)
 #                print file
-                assert os.path.exists(full_path), 'Invalid path: {}'.format(full_path)
+                assert os.path.exists(full_path), 'Invalid path: {} --{}/{}--'.format(full_path, root, file)
                 duplicate_set = self.duplicate_set_for_original_path(full_path)
                 duplicate_set.add_duplicate_path(os.path.join(root, file))
 
