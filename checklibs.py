@@ -16,12 +16,13 @@ from pprint import pprint
 
 class MachOFile:
 
-    def __init__(self, image_path, arch, parent = None):
+    def __init__(self, image_path, arch, parent = None, verbose = False):
         self.image_path = image_path
         self._dependencies = []
         self._cache = dict(paths = {}, order = [])
         self.arch = arch
         self.parent = parent
+        self.verbose = verbose
         self.header_info = {}
         self.load_info()
         self.add_to_cache()
@@ -39,7 +40,8 @@ class MachOFile:
         if not output:
             print >> sys.stderr, 'Unable to load mach header for {0} ({1}), architecture mismatch? Use --arch option to pick architecture'.format(self.image_path.resolved_path, self.arch)
             exit()
-        (keys, values) = output.splitlines()[1:]
+        # Take the last two lines from the output
+        (keys, values) = output.splitlines()[-2:]
         self.header_info = dict(zip(keys.split(), values.split()))
         
     def load_rpaths(self):
@@ -156,7 +158,7 @@ class MachOFile:
     def lookup_or_make_item(self, image_path):
         image = self.cached_item_for_path(image_path.resolved_path)
         if not image: # cache miss
-            image = MachOFile(image_path, self.arch, parent = self)
+            image = MachOFile(image_path, self.arch, parent = self, verbose = self.verbose)
         return image
 
     def image_path_for_recorded_path(self, recorded_path):
@@ -167,10 +169,14 @@ class MachOFile:
             executable_image_path = self.executable_path()
             if executable_image_path:
                 path.resolved_path = os.path.normpath(recorded_path.replace(ImagePath.EXECUTABLE_PATH_TOKEN, os.path.dirname(executable_image_path.resolved_path)))
+                if self.verbose:
+                    print "@executable_path: resolved {} to {}".format(recorded_path, path.resolved_path)
 
         # handle @loader_path
         elif recorded_path.startswith(ImagePath.LOADER_PATH_TOKEN):
             path.resolved_path = os.path.normpath(recorded_path.replace(ImagePath.LOADER_PATH_TOKEN, os.path.dirname(self.image_path.resolved_path)))
+            if self.verbose:
+                print "@loader_path: resolved {} to {}".format(recorded_path, path.resolved_path)
 
         # handle @rpath
         elif recorded_path.startswith(ImagePath.RPATH_TOKEN):
@@ -179,11 +185,18 @@ class MachOFile:
                 if os.path.exists(resolved_path):
                     path.resolved_path = resolved_path
                     path.rpath_source = rpath.rpath_source
+                    if self.verbose:
+                        print "@rpath: resolved {} to {} (source {})".format(recorded_path, path.resolved_path, rpath.rpath_source)
                     break
 
         # handle absolute path
         elif recorded_path.startswith('/'):
             path.resolved_path = recorded_path
+            if self.verbose:
+                print "absolute path: resolved {} to {}".format(recorded_path, path.resolved_path)
+
+        else:
+            print >> sys.stderr, "image_path_for_recorded_path: recorded_path {} doesn't match any cases".format(recorded_path)
 
         return path
 
@@ -296,6 +309,7 @@ class ImagePath:
 parser = optparse.OptionParser(usage = "Usage: %prog [options] path_to_mach_o_file")
 parser.add_option("--arch", dest = "arch", help = "architecture", metavar = "ARCH")
 parser.add_option("--all", dest = "include_system_libraries", help = "Include system frameworks and libraries", action="store_true")
+parser.add_option("--verbose", dest = "verbose", help = "Turn on verbose mode", action="store_true", default=False)
 (options, args) = parser.parse_args()
 
 if len(args) < 1:
