@@ -302,12 +302,12 @@ if len(args) < 1:
     parser.print_help()
     sys.exit(1)
 
-archs = MachOFile.architectures_for_image_at_path(args[0])
+archs = MachOFile.architectures_for_image_at_path(os.path.abspath(args[0]))
 if archs and not options.arch:
     print >> sys.stderr, 'Analyzing architecture {}, override with --arch if needed'.format(archs[0])
     options.arch = archs[0]
 
-toplevel_image = MachOFile(ImagePath(args[0]), options.arch)
+toplevel_image = MachOFile(ImagePath(os.path.abspath(args[0])), options.arch)
 
 for dependency in toplevel_image.all_dependencies():
     if dependency.image_path.exists() and (not options.include_system_libraries) and dependency.image_path.is_system_location():
