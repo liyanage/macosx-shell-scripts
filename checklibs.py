@@ -209,7 +209,7 @@ class MachOFile:
     @classmethod
     def architectures_for_image_at_path(cls, path):
         output = cls.shell('file "{}"', [path])
-        file_architectures = re.findall(r' executable (\w+)', output)
+        file_architectures = re.findall(r'\[(\w+):Mach-O ', output)
         ordering = 'x86_64 i386'.split()
         file_architectures = sorted(file_architectures, lambda a, b: cmp(ordering.index(a), ordering.index(b)))
         return file_architectures
