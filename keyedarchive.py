@@ -19,6 +19,7 @@ import collections
 import tempfile
 import subprocess
 import logging
+import zlib
 
 class KeyedArchiveObjectGraphNode(object):
 
@@ -510,16 +511,48 @@ class KeyedArchive(object):
         return ['(null)' if i is None else i for i in row]
 
     @classmethod
-    def dump_archive_from_plist_file(cls, plist_path, keypath):
+    def dump_archive_from_plist_file(cls, plist_path, keypath, data_offset=None, data_compression=None):
         with open(plist_path) as f:
             bytes = f.read()
         assert bytes, 'Input file {} is empty'.format(plist_path)
         bytes = bytearray(bytes)
+
         plist_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
         if not plist_dictionary:
             raise Exception('Unable to read property list from {}'.format(plist_dictionary))
+
         value = plist_dictionary.valueForKeyPath_(keypath)
-        archive, error = cls.archive_from_bytes(value.bytes())
+        if not value:
+            raise Exception('Unable to find value with key path {} from plist at {}'.format(keypath, plist_path))
+        archive_bytes = value.bytes()
+
+        if data_offset:
+            archive_bytes = archive_bytes[data_offset:]
+        
+        if not len(archive_bytes):
+            raise Exception('Encountered zero-length archived data bytes stream for key path {} from plist at {}'.format(keypath, plist_path))
+
+        if data_compression:
+            match = re.match(r'(\w+)(?::(\w+))?', data_compression)
+            assert match, 'Invalid compression option'
+            format, options = match.groups()
+            if format == 'zlib':
+                wbits = int(options) if options else 15
+                print wbits
+                compressed_length = len(archive_bytes)
+                archive_bytes = zlib.decompress(archive_bytes.tobytes(), wbits)
+                decompressed_length = len(archive_bytes)
+                print 'Decompressed {} to {} bytes'.format(compressed_length, decompressed_length)
+            else:
+                raise Exception('Unsupported compression {}'.format(data_compression))
+
+        archive, error = cls.archive_from_bytes(archive_bytes)
+
+        if not archive:
+            with open('/tmp/dump.dat', 'w') as f:
+                f.write(archive_bytes.tobytes())
+            raise Exception('Unable to decode archive from data of length {} at key path {} from plist at {}'.format(len(archive_bytes), keypath, plist_path))
+            
         print archive.dump_string()
     
     @classmethod
@@ -572,7 +605,7 @@ class KeyedArchiveTool(object):
         KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns, self.args.extra_sql)
 
     def run_plist(self):
-        KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath)
+        KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath, data_offset=self.args.plist_data_offset, data_compression=self.args.plist_data_compression)
     
     def run_file(self):
         if self.args.infile is None:
@@ -592,7 +625,7 @@ class KeyedArchiveTool(object):
     @classmethod
     def parser(cls):
         parser = argparse.ArgumentParser(description='NSKeyedArchive tool')
-        parser.add_argument('--verbose', action='store_true', help='Enable some additional debug logging output')
+        parser.add_argument('-v', '--verbose', action='store_true', help='Enable some additional debug logging output')
 
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
         file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
@@ -609,12 +642,17 @@ class KeyedArchiveTool(object):
         plist_group = parser.add_argument_group(title='Reading from Property Lists', description='Read the serialized archive from a property list file, usually a preferences file in ~/Library/Preferences. You need to pass the plist_path and plist_keypath options.')
         plist_group.add_argument('--plist_path', help='The path to the plist file')
         plist_group.add_argument('--plist_keypath', help='The key/value coding key path to the object in the plist that contains the serialized keyed archiver data.')
+        plist_group.add_argument('--plist_data_offset', type=int, help='Offset in bytes from the start of the byte stream to the start of the serialized keyed archiver data')
+        plist_group.add_argument('--plist_data_compression', help='Decompression to apply to serialized keyed archiver data after applying offset and before unarchiving. The "zlib" format is currently the only supported format. You can add decompression options after a colon, for zlib the option is the "window bits" parameter, e.g. "zlib:31"')
 
         return parser
 
     @classmethod
     def main(cls):
-        cls(cls.parser().parse_args()).run()
+        args = cls.parser().parse_args()
+        if not args.verbose:
+            sys.tracebacklimit = 0
+        cls(args).run()
 
 if __name__ == '__main__':
     KeyedArchiveTool.main()
