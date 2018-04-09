@@ -20,12 +20,16 @@ import tempfile
 import subprocess
 import logging
 import zlib
+import binascii
+import textwrap
+
 
 class KeyedArchiveObjectGraphNode(object):
 
-    def __init__(self, identifier, serialized_representation):
+    def __init__(self, identifier, serialized_representation, archive):
         self.identifier = identifier
         self.serialized_representation = serialized_representation
+        self.archive = archive
     
     def resolve_references(self, archive):
         pass
@@ -50,6 +54,28 @@ class KeyedArchiveObjectGraphNode(object):
         dump = base64.b64encode(bytes)
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
     
+    def hexencode_and_wrap(self, bytes):
+        dump = binascii.hexlify(bytes)
+        return '\n'.join(self.wrap_text_to_line_length(dump, 76))
+    
+    def ascii_dump_for_data(self, dump_bytes):
+        length_limit = self.archive.input_output_configuration.output_dump_length()
+        original_length = len(dump_bytes)
+        if length_limit >= 0:
+            dump_bytes = dump_bytes[:length_limit]
+        truncated_length = len(dump_bytes)
+        omitted_byte_count = original_length - truncated_length
+
+        if self.archive.input_output_configuration.output_dump_encoding() == 'hex':
+            ascii_dump = self.hexencode_and_wrap(dump_bytes)
+        else:
+            ascii_dump = self.b64encode_and_wrap(dump_bytes)
+        
+        if omitted_byte_count:
+            ascii_dump += '\n[+ {} bytes]'.format(omitted_byte_count)
+        
+        return ascii_dump
+    
     def __getitem__(self, key):
         raise Exception('{} must override __getitem__()'.format(self.__class__))
         
@@ -58,14 +84,14 @@ class KeyedArchiveObjectGraphNode(object):
         return False
         
     @classmethod
-    def parse_serialized_representation(cls, identifier, serialized_representation):
-        return cls(identifier, serialized_representation)
+    def parse_serialized_representation(cls, identifier, serialized_representation, archive):
+        return cls(identifier, serialized_representation, archive)
 
     @classmethod
-    def node_for_serialized_representation(cls, identifier, serialized_representation):
+    def node_for_serialized_representation(cls, identifier, serialized_representation, archive):
         for node_class in cls.__subclasses__():
             if node_class.can_parse_serialized_representation(serialized_representation):
-                return node_class.parse_serialized_representation(identifier, serialized_representation)
+                return node_class.parse_serialized_representation(identifier, serialized_representation, archive)
         return None
     
     @classmethod
@@ -98,9 +124,9 @@ class KeyedArchiveObjectGraphNullNode(KeyedArchiveObjectGraphNode):
 
 class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
 
-    def __init__(self, identifier, serialized_representation):
+    def __init__(self, identifier, serialized_representation, archive):
         self.properties = {}
-        super(KeyedArchiveObjectGraphInstanceNode, self).__init__(identifier, serialized_representation)
+        super(KeyedArchiveObjectGraphInstanceNode, self).__init__(identifier, serialized_representation, archive)
         for key, value in serialized_representation.items():
             if key == '$class':
                 self.node_class = value
@@ -153,17 +179,16 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
             value = value.dump_string()
         return value
     
-
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
         return cls.is_nsdictionary(serialized_representation) and '$class' in serialized_representation
 
     @classmethod
-    def parse_serialized_representation(cls, identifier, serialized_representation):
+    def parse_serialized_representation(cls, identifier, serialized_representation, archive):
         for node_class in cls.__subclasses__():
             if node_class.can_parse_serialized_representation(serialized_representation):
-                return node_class.parse_serialized_representation(identifier, serialized_representation)
-        return super(KeyedArchiveObjectGraphInstanceNode, cls).parse_serialized_representation(identifier, serialized_representation)
+                return node_class.parse_serialized_representation(identifier, serialized_representation, archive)
+        return super(KeyedArchiveObjectGraphInstanceNode, cls).parse_serialized_representation(identifier, serialized_representation, archive)
 
 
 class KeyedArchiveObjectGraphNSDateNode(KeyedArchiveObjectGraphInstanceNode):
@@ -183,8 +208,8 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        b64dump = self.b64encode_and_wrap(self.properties['NS.data'].bytes())
-        return u'<NSMutableData length {}>\n{}'.format(self.properties['NS.data'].length(), b64dump)
+        ascii_dump = self.ascii_dump_for_data(self.properties['NS.data'].bytes())
+        return u'<NSMutableData length {}>\n{}'.format(self.properties['NS.data'].length(), ascii_dump)
 
     def resolve_references(self, archive):
         super(KeyedArchiveObjectGraphNSMutableDataNode, self).resolve_references(archive)
@@ -194,6 +219,7 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
             if replacement:
                 self.properties['NS.data'] = replacement.serialized_representation['NS.data']
 
+
 class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
@@ -201,8 +227,8 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
         return cls.is_nsdata(serialized_representation)
 
     def dump_string(self, seen=None):
-        b64dump = self.b64encode_and_wrap(self.serialized_representation.bytes())
-        return u'<NSData length {}>\n{}'.format(self.serialized_representation.length(), b64dump)
+        ascii_dump = self.ascii_dump_for_data(self.serialized_representation.bytes())
+        return u'<NSData length {}>\n{}'.format(self.serialized_representation.length(), ascii_dump)
 
 
 class KeyedArchiveObjectGraphBoolNode(KeyedArchiveObjectGraphNode):
@@ -403,6 +429,7 @@ class KeyedArchiveInputDataHex(KeyedArchiveInputData):
     def priority(cls):
         return 1
 
+
 class KeyedArchiveInputDataBase64(KeyedArchiveInputData):
 
     def decode_data(self):
@@ -424,15 +451,16 @@ class KeyedArchiveInputDataBase64(KeyedArchiveInputData):
 
 class KeyedArchive(object):
 
-    def __init__(self, archive_dictionary):
+    def __init__(self, archive_dictionary, configuration):
         self.archive_dictionary = archive_dictionary
         self.parse_archive_dictionary()
+        self.input_output_configuration = configuration
     
     def parse_archive_dictionary(self):
         self.objects = []
 
         for index, obj in enumerate(self.archive_dictionary['$objects']):
-            node = KeyedArchiveObjectGraphNode.node_for_serialized_representation(index, obj)
+            node = KeyedArchiveObjectGraphNode.node_for_serialized_representation(index, obj, self)
             if not node:
                 raise Exception('Unable to parse serialized representation: {} / {}'.format(type(obj), obj))
             assert isinstance(node, KeyedArchiveObjectGraphNode)
@@ -463,16 +491,16 @@ class KeyedArchive(object):
         return self.object_at_index(id)
     
     @classmethod
-    def archive_from_bytes(cls, bytes):
-        bytes = bytearray(bytes)
-        assert bytes, 'Missing input data'
-        archive_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
+    def archive_from_bytes(cls, archive_bytes, configuration):
+        assert archive_bytes, 'Missing input data'
+        archive_bytes = cls.process_data_for_input_configuration(archive_bytes, configuration)
+        archive_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(archive_bytes, 0, None, None)
         if not archive_dictionary:
             return None, error
-        return cls(archive_dictionary), None
+        return cls(archive_dictionary, configuration), None
 
     @classmethod
-    def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql):
+    def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql, configuration):
         columns = [column_name]
         if extra_columns:
             columns.extend(extra_columns)
@@ -484,11 +512,11 @@ class KeyedArchive(object):
 
         archives = []
         for row in cursor:
-            blob, extra_fields = row[0], cls.sanitize_row(row[1:])
+            archive_bytes, extra_fields = row[0], cls.sanitize_row(row[1:])
             archive = None
             error = None
-            if blob:
-                archive, error = cls.archive_from_bytes(blob)
+            if archive_bytes:
+                archive, error = cls.archive_from_bytes(archive_bytes, configuration)
             extra_data = dict(zip(extra_columns, extra_fields)) if extra_columns else None
             archive_data_row = ArchiveDataRow(archive, extra_data, error)
             archives.append(archive_data_row)
@@ -511,7 +539,7 @@ class KeyedArchive(object):
         return ['(null)' if i is None else i for i in row]
 
     @classmethod
-    def dump_archive_from_plist_file(cls, plist_path, keypath, data_offset=None, data_compression=None):
+    def dump_archive_from_plist_file(cls, plist_path, keypath, configuration):
         with open(plist_path) as f:
             bytes = f.read()
         assert bytes, 'Input file {} is empty'.format(plist_path)
@@ -526,28 +554,10 @@ class KeyedArchive(object):
             raise Exception('Unable to find value with key path {} from plist at {}'.format(keypath, plist_path))
         archive_bytes = value.bytes()
 
-        if data_offset:
-            archive_bytes = archive_bytes[data_offset:]
-        
         if not len(archive_bytes):
             raise Exception('Encountered zero-length archived data bytes stream for key path {} from plist at {}'.format(keypath, plist_path))
 
-        if data_compression:
-            match = re.match(r'(\w+)(?::(\w+))?', data_compression)
-            assert match, 'Invalid compression option'
-            format, options = match.groups()
-            if format == 'zlib':
-                wbits = int(options) if options else 15
-                print wbits
-                compressed_length = len(archive_bytes)
-                archive_bytes = zlib.decompress(archive_bytes.tobytes(), wbits)
-                decompressed_length = len(archive_bytes)
-                print 'Decompressed {} to {} bytes'.format(compressed_length, decompressed_length)
-            else:
-                raise Exception('Unsupported compression {}'.format(data_compression))
-
-        archive, error = cls.archive_from_bytes(archive_bytes)
-
+        archive, error = cls.archive_from_bytes(archive_bytes, configuration)
         if not archive:
             with open('/tmp/dump.dat', 'w') as f:
                 f.write(archive_bytes.tobytes())
@@ -556,24 +566,82 @@ class KeyedArchive(object):
         print archive.dump_string()
     
     @classmethod
-    def dump_archive_from_file(cls, archive_file, encoding, output_file=None):
+    def dump_archive_from_file(cls, archive_file, encoding, configuration, output_file=None):
         if not output_file:
             output_file = sys.stdout
-        archive = cls.archive_from_file(archive_file, encoding)
+        archive = cls.archive_from_file(archive_file, encoding, configuration)
         print >> output_file, archive.dump_string().encode('utf-8')
 
     @classmethod
-    def archive_from_file(cls, archive_file, encoding):
+    def archive_from_file(cls, archive_file, encoding, configuration):
         data = archive_file.read()
         
         data = KeyedArchiveInputData.guess_encoding(data, encoding)
-        archive, error = cls.archive_from_bytes(data.data())
+        archive, error = cls.archive_from_bytes(data.data(), configuration)
         if not archive:
             if error:
                 error = unicode(error).encode('utf-8')
             raise Exception('Unable to decode a keyed archive from input data: {}'.format(error))
         return archive
+
+    @classmethod
+    def process_data_for_input_configuration(cls, data, configuration):
+        offset = configuration.input_data_offset()
+        if offset:
+            data = data[offset:]
+        
+        compression_type, options = configuration.input_data_compression_type_and_options()
+        if compression_type:
+            if compression_type == 'zlib':
+                wbits = int(options) if options else 15
+                compressed_length = len(data)
+                data = zlib.decompress(memoryview(data).tobytes(), wbits)
+                data = bytearray(data)
+                decompressed_length = len(data)
+                print 'Decompressed {} to {} bytes'.format(compressed_length, decompressed_length)
+            else:
+                raise Exception('Unsupported compression {}'.format(compression_type))
+
+        return data
+
+
+class InputOutputConfiguration(object):
+
+    def output_dump_encoding(self):
+        return 'hex'
+
+    def output_dump_length(self):
+        return 32
     
+    def input_data_offset(self):
+        return 0
+    
+    def input_data_compression_type_and_options(self):
+        return None, None
+
+
+class ArgumentParseInputOutputConfiguration(InputOutputConfiguration):
+
+    def __init__(self, args):
+        self.args = args
+    
+    def output_dump_encoding(self):
+        return self.args.output_dump_encoding
+
+    def output_dump_length(self):
+        return self.args.output_dump_length
+    
+    def input_data_offset(self):
+        return self.args.input_data_offset
+    
+    def input_data_compression_type_and_options(self):
+        compression = self.args.input_data_compression
+        if compression:
+            match = re.match(r'(\w+)(?::(\w+))?', compression)
+            assert match, 'Invalid compression option'
+            return match.groups()
+        return None, None
+
 
 class KeyedArchiveTool(object):
 
@@ -581,42 +649,37 @@ class KeyedArchiveTool(object):
         self.args = args
 
     def run(self):
-    
         if self.args.verbose:
             logging.basicConfig(level=logging.DEBUG)
     
-        # If the ThisServiceMode env variable is set
-        # (see http://wafflesoftware.net/thisservice/ for details),
-        # switch to filter mode
-        if os.environ.get('ThisServiceMode'):
-            self.args.service_mode = True
-        
-        if self.args.service_mode:
-            self.run_service()
-        elif self.args.sqlite_path:
-            self.run_sqlite()
-        elif self.args.plist_path:
-            self.run_plist()
-        else:
-            self.run_file()
-        
-    def run_sqlite(self):
-        conn = sqlite3.connect(self.args.sqlite_path)
-        KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns, self.args.extra_sql)
+        configuration = ArgumentParseInputOutputConfiguration(self.args)
 
-    def run_plist(self):
-        KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath, data_offset=self.args.plist_data_offset, data_compression=self.args.plist_data_compression)
+        if self.args.service_mode:
+            self.run_service(configuration)
+        elif self.args.sqlite_path:
+            self.run_sqlite(configuration)
+        elif self.args.plist_path:
+            self.run_plist(configuration)
+        else:
+            self.run_file(configuration)
+        
+    def run_sqlite(self, configuration):
+        conn = sqlite3.connect(self.args.sqlite_path)
+        KeyedArchive.dump_archives_from_sqlite_table_column(conn, self.args.sqlite_table, self.args.sqlite_column, self.args.extra_columns, self.args.extra_sql, configuration=configuration)
+
+    def run_plist(self, configuration):
+        KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath, configuration=configuration)
     
-    def run_file(self):
+    def run_file(self, configuration):
         if self.args.infile is None:
             self.parser().print_help()
             exit(0)
-        KeyedArchive.dump_archive_from_file(self.args.infile, self.args.encoding)
+        KeyedArchive.dump_archive_from_file(self.args.infile, self.args.encoding, configuration)
     
-    def run_service(self):
+    def run_service(self, configuration):
         temp = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
         try:
-            KeyedArchive.dump_archive_from_file(sys.stdin, self.args.encoding, output_file=temp)
+            KeyedArchive.dump_archive_from_file(sys.stdin, self.args.encoding, configuration, output_file=temp)
         except Exception as e:
             temp.write('Unable to decode NSKeyedArchive: {}'.format(e))
         temp.close()
@@ -624,26 +687,39 @@ class KeyedArchiveTool(object):
 
     @classmethod
     def parser(cls):
-        parser = argparse.ArgumentParser(description='NSKeyedArchive tool')
+        parser = argparse.ArgumentParser(
+            description='NSKeyedArchive tool',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=textwrap.dedent('''\
+                Examples
+                --------
+                
+                keyedarchive.py -v --plist-path /path/to/plist --plist-keypath foo.bar.archive --input-data-offset 16 --input-data-compression zlib:31 --output-dump-encoding base64 --output-dump-length 200
+
+                '''))
         parser.add_argument('-v', '--verbose', action='store_true', help='Enable some additional debug logging output')
+
+        input_output_configuration_group = parser.add_argument_group(title='Input/output options', description='Input/output configuration options')
+        input_output_configuration_group.add_argument('--output-dump-length', type=int, default=32, help='Truncate binary data dumps to the given length. Defaults to 32. Set to -1 to allow unlimited length.')
+        input_output_configuration_group.add_argument('--output-dump-encoding', choices=['base64', 'hex'], default='hex', help='ASCII format for binary data dumps. Defaults to "hex".')
+        input_output_configuration_group.add_argument('--input-data-offset', type=int, help='Offset in bytes from the start of the byte stream to the start of the serialized keyed archiver data')
+        input_output_configuration_group.add_argument('--input-data-compression', help='Decompression to apply to serialized keyed archiver data after applying offset and before unarchiving. The "zlib" format is currently the only supported format. You can add decompression options after a colon, for zlib the option is the "window bits" parameter, e.g. "zlib:31"')
 
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
         file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
         file_group.add_argument('--encoding', choices='auto hex base64 none'.split(), default='auto', help='The binary-to-text encoding, if any. The default is auto.')
-        file_group.add_argument('--service_mode', action='store_true', help='Enable OS X service mode. Take input from stdin with auto-detected encoding and write the result to a temporary text file and open it with Safari.')
+        file_group.add_argument('--service-mode', action='store_true', help='Enable OS X service mode. Take input from stdin with auto-detected encoding and write the result to a temporary text file and open it with Safari.')
         
         sqlite_group = parser.add_argument_group(title='Reading from SQLite databases', description='Read the serialized archive from SQLite DB. You need to pass at least the sqlite_path, sqlite_table, and sqlite_column options.')
-        sqlite_group.add_argument('--sqlite_path', help='The path to the SQLite database file')
-        sqlite_group.add_argument('--sqlite_table', help='SQLite DB table name')
-        sqlite_group.add_argument('--sqlite_column', help='SQLite DB column name')
-        sqlite_group.add_argument('--sqlite_extra_column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
-        sqlite_group.add_argument('--sqlite_extra_sql', dest='extra_sql', help='additional SQL code, e.g. for joins')
+        sqlite_group.add_argument('--sqlite-path', help='The path to the SQLite database file')
+        sqlite_group.add_argument('--sqlite-table', help='SQLite DB table name')
+        sqlite_group.add_argument('--sqlite-column', help='SQLite DB column name')
+        sqlite_group.add_argument('--sqlite-extra-column', action='append', dest='extra_columns', help='additional column name, just for printing. Can occur multiple times.')
+        sqlite_group.add_argument('--sqlite-extra-sql', dest='extra_sql', help='additional SQL code, e.g. for joins')
 
         plist_group = parser.add_argument_group(title='Reading from Property Lists', description='Read the serialized archive from a property list file, usually a preferences file in ~/Library/Preferences. You need to pass the plist_path and plist_keypath options.')
-        plist_group.add_argument('--plist_path', help='The path to the plist file')
-        plist_group.add_argument('--plist_keypath', help='The key/value coding key path to the object in the plist that contains the serialized keyed archiver data.')
-        plist_group.add_argument('--plist_data_offset', type=int, help='Offset in bytes from the start of the byte stream to the start of the serialized keyed archiver data')
-        plist_group.add_argument('--plist_data_compression', help='Decompression to apply to serialized keyed archiver data after applying offset and before unarchiving. The "zlib" format is currently the only supported format. You can add decompression options after a colon, for zlib the option is the "window bits" parameter, e.g. "zlib:31"')
+        plist_group.add_argument('--plist-path', help='The path to the plist file')
+        plist_group.add_argument('--plist-keypath', help='The key/value coding key path to the object in the plist that contains the serialized keyed archiver data.')
 
         return parser
 
