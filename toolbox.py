@@ -261,7 +261,13 @@ class SubcommandStatus(AbstractSubcommand):
     def run(self):
         for identifier in self.selected_or_all_tool_identifiers():
             tool = Tool.tool_for_identifier(identifier)
-            print('Tool "{}", installed version: {}, latest version: {}'.format(identifier, tool.installed_version(), tool.latest_version()))            
+            v1 = tool.installed_version()
+            v2 = tool.latest_version()
+            if v1 == v2:
+                color = '\033[0;32m'
+            else:
+                color = '\033[0;31m'
+            print('Tool "{}", installed version: {}{}{}, latest version: {}'.format(identifier, color, tool.installed_version(), '\033[0m', tool.latest_version()))            
 
     @classmethod
     def configure_argument_parser(cls, parser):
