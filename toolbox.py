@@ -41,19 +41,33 @@ class GitHubRelease(object):
 
     def __init__(self, repository, release, version_number_accessor, preferred_asset_predicate=None):
         self.repository = repository
+        self.release = release
         self.preferred_asset_predicate = preferred_asset_predicate
         self.version_number_accessor = version_number_accessor
-        url = 'https://api.github.com/repos/{}/{}/releases/{}'.format(repository.project, repository.repository, release)
-        logging.debug('Loading {}'.format(url))            
-        result = urllib2.urlopen(url)
-        self.data = json.load(result)
-        assert 'assets' in self.data, 'Unexpected data format: {}'.format(self.data)
+        self.cached_server_data = None
     
+    def server_data(self):
+        if not self.cached_server_data:
+            try:
+                url = 'https://api.github.com/repos/{}/{}/releases/{}'.format(self.repository.project, self.repository.repository, self.release)
+                logging.debug('Loading {}'.format(url))            
+                result = urllib2.urlopen(url)
+                self.cached_server_data = json.load(result)
+                assert 'assets' in self.cached_server_data, 'Unexpected data format: {}'.format(self.cached_server_data)
+            except Exception as e:
+                print('Unable to open URL {}: {}'.format(url, e), file=sys.stderr)
+        return self.cached_server_data
+
     def version(self):
+        if not self.server_data():
+            return None
         return pkg_resources.parse_version(self.version_number_accessor(self))
     
     def name(self):
-        return self.data['name']
+        data = self.server_data()
+        if not data:
+            return None
+        return data['name']
     
     @classmethod
     def version_number_accessor_for_name_regex(cls, regex):
@@ -64,7 +78,7 @@ class GitHubRelease(object):
         return accessor
 
     def assets(self, predicate=None):
-        assets = [GitHubReleaseAsset(asset_info) for asset_info in self.data['assets']]
+        assets = [GitHubReleaseAsset(asset_info) for asset_info in self.server_data()['assets']]
         if predicate:
             assets = [a for a in assets if predicate(a)]
         return assets
@@ -85,19 +99,32 @@ class GitHubRepo(object):
 
 class Tool(object):
 
+    tool_class_map = None
+
     @classmethod
     def tool_for_identifier(cls, identifier):
-        for i, subclass in cls.enumerate_known_tools():
-            logging.debug('Subclass {} identifier {}'.format(subclass, i))
-            if i == identifier:
-                return subclass()
-        raise Exception('Unable to find tool with identifier "{}"'.format(identifier))
+        if not cls.tool_class_map:
+            cls.tool_class_map = {}
+            for i, subclass in cls.enumerate_known_tool_classes():
+                cls.tool_class_map[i] = subclass
+                logging.debug('Subclass {} identifier {}'.format(subclass, i))
+        if identifier not in cls.tool_class_map:
+            raise Exception('Unable to find tool with identifier "{}"'.format(identifier))
+        return cls.tool_class_map[identifier]()
     
     @classmethod
-    def enumerate_known_tools(cls):
+    def enumerate_known_tool_classes(cls):
         for subclass in cls.__subclasses__():
             yield subclass.identifier(), subclass
-    
+
+    @classmethod
+    def enumerate_installed_tools(cls):
+        installed_tools = []
+        for i, subclass in cls.enumerate_known_tool_classes():
+            tool = subclass()
+            if tool.is_installed:
+                yield i, tool
+
     @classmethod
     def known_identifiers(cls):
         return [s.identifier() for s in cls.__subclasses__()]
@@ -106,6 +133,9 @@ class Tool(object):
     def identifier(cls):
         assert cls.__name__.startswith('Tool'), 'Class name of {} must start with "Tool" or class must override "identifier()"'
         return cls.__name__[len('Tool'):].lower()
+
+    def is_installed(self):
+        return self.installed_version() is not None
     
     def installed_version(self):
         raise Exception('"{}" must override this method'.format(type(self).__name__))
@@ -113,13 +143,20 @@ class Tool(object):
     def latest_version(self):
         raise Exception('"{}" must override this method'.format(type(self).__name__))
     
-    def is_current(self):
+    def is_out_of_date(self):
         installed_version = self.installed_version()
-        if installed_version:
-            return installed_version >= self.latest_version()
-        return False
-    
+        if not installed_version:
+            return False
+        latest_version = self.latest_version()
+        if not latest_version:
+            print('Unable to check if {} is current because the latest version is unavailable'.format(self.identifier()), file=sys.stderr)
+            return False
+        return latest_version > installed_version
+
     def install_latest_version(self):
+        if not self.latest_version():
+            print('Unable to install {} because the latest version is unavailable'.format(self.identifier()), file=sys.stderr)
+            return False
         url = self.latest_version_archive_url()
         head, tail = os.path.split(url)
         temp_file_path = os.path.join(os.environ['TMPDIR'], tail)
@@ -128,6 +165,22 @@ class Tool(object):
         subprocess.check_call(cmd)
         self.install_archive(temp_file_path)
     
+    @classmethod
+    def have_dmgtool(cls):
+        try:
+            subprocess.check_call(['which', '-s', 'dmgtool.py'])
+            return True
+        except:
+            return False
+
+    @classmethod
+    def dmgtool_install_package(cls, path):
+        if cls.have_dmgtool():
+            cmd = ['sudo', 'dmgtool.py', 'install-package', path]
+            print(subprocess.check_output(cmd))
+        else:
+            print('dmgtool.py is not present (You can download it from https://github.com/liyanage/macosx-shell-scripts), please install package manually: {}'.format(path))
+
     def install_archive(self, archive_path):
         raise Exception('"{}" must override this method'.format(type(self).__name__))
 
@@ -177,29 +230,43 @@ class ToolHugo(Tool):
 class ToolExifTool(Tool):
 
     def __init__(self):
-        info_page_url = 'http://www.sno.phy.queensu.ca/~phil/exiftool/'
-        request = urllib2.Request(info_page_url)
-        response = urllib2.urlopen(request)
-        self.data = response.read()
-        result = re.findall(r'<a href="(ExifTool-([\d+.]+).dmg)">', self.data)
-        if not result:
-            print(self.data)
-            raise('Unable to find DMG link in page content of {}'.format(info_page_url))
-        self.dmg_filename, self.server_version = result[0]
-        self.dmg_url = info_page_url + self.dmg_filename
+        self.cached_server_data = None
+        self.info_page_url = 'http://www.sno.phy.queensu.ca/~phil/exiftool/'
     
+    def server_data(self):
+        if not self.cached_server_data:
+            try:
+                request = urllib2.Request(self.info_page_url)
+                response = urllib2.urlopen(request)
+                data = response.read()
+                results = re.findall(r'<a href="(ExifTool-([\d+.]+).dmg)">', data)
+                if results:
+                    self.cached_server_data = results[0]
+                else:
+                    print(data, file=sys.stderr)
+                    print('Unable to find DMG link in page content of {}'.format(info_page_url), file=sys.stderr)
+            except Exception as e:
+                print('Unable to open URL {}: {}'.format(self.info_page_url, e), file=sys.stderr)
+        return self.cached_server_data
+
     def installed_version(self):
         return self.version_from_process_output(['exiftool', '-ver'])
 
     def latest_version(self):
-        return pkg_resources.parse_version(self.server_version)
+        data = self.server_data()
+        if not data:
+            return None
+        return pkg_resources.parse_version(data[1])
     
     def latest_version_archive_url(self):
-        return self.dmg_url
+        data = self.server_data()
+        if not data:
+            return None
+        dmg_filename = data[0]
+        return self.info_page_url + dmg_filename
 
     def install_archive(self, archive_path):
-        cmd = ['sudo', 'dmgtool.py', 'install-package', archive_path]
-        print(subprocess.check_output(cmd))
+        self.dmgtool_install_package(archive_path)
 
 
 class ToolPython3(Tool):
@@ -229,7 +296,6 @@ class ToolPython3(Tool):
         print(subprocess.check_output(cmd))
 
 
-
 class AbstractSubcommand(object):
 
     def __init__(self, arguments):
@@ -252,6 +318,15 @@ class AbstractSubcommand(object):
         else:
             return Tool.known_identifiers()
 
+    def enumerate_selected_or_installed_tools(self):
+        if self.args.tool_identifier:
+            for i in self.args.tool_identifier:
+                tool = Tool.tool_for_identifier(i)
+                yield tool
+        else:
+            for tool in Tool.enumerate_installed_tools():
+                yield tool
+
 
 class SubcommandStatus(AbstractSubcommand):
     """
@@ -267,7 +342,7 @@ class SubcommandStatus(AbstractSubcommand):
                 color = '\033[0;32m'
             else:
                 color = '\033[0;31m'
-            print('Tool "{}", installed version: {}{}{}, latest version: {}'.format(identifier, color, tool.installed_version(), '\033[0m', tool.latest_version()))            
+            print('Tool "{}", installed version: {}{}{}, latest version: {}'.format(identifier, color, v1, '\033[0m', v2))
 
     @classmethod
     def configure_argument_parser(cls, parser):
@@ -284,14 +359,32 @@ class SubcommandInstall(AbstractSubcommand):
             logging.debug('Searching for tool with identifier {}'.format(identifier))
             tool = Tool.tool_for_identifier(identifier)
             logging.debug('Installed version: {}, current version: {}'.format(tool.installed_version(), tool.latest_version()))            
-            if tool.is_current() and not self.args.force:
+            if tool.is_installed() and not tool.is_out_of_date() and not self.args.force:
                 print('{} is current at version {}'.format(identifier, tool.installed_version()))
                 continue
             tool.install_latest_version()
 
     @classmethod
     def configure_argument_parser(cls, parser):
-        parser.add_argument('tool_identifier', nargs='*', help='Identifier of the tool to update')
+        parser.add_argument('tool_identifier', nargs='*', help='Identifier of the tool to update. Optional, defaults to all known tools.')
+        parser.add_argument('-f', '--force', action='store_true', help='Force update even if the installed version is up to date')
+
+
+class SubcommandUpdate(AbstractSubcommand):
+    """
+    Install or update a tool
+    """
+    
+    def run(self):
+        for identifier, tool in self.enumerate_selected_or_installed_tools():
+            logging.debug('Installed version: {}, current version: {}'.format(tool.installed_version(), tool.latest_version()))
+            if not tool.is_out_of_date() and not self.args.force:
+                continue
+            tool.install_latest_version()
+
+    @classmethod
+    def configure_argument_parser(cls, parser):
+        parser.add_argument('tool_identifier', nargs='*', help='Identifier of the tool to update. Optional, defaults to all installed tools.')
         parser.add_argument('-f', '--force', action='store_true', help='Force update even if the installed version is up to date')
 
 
