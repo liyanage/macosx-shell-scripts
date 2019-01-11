@@ -458,7 +458,6 @@ class KeyedArchive(object):
 
     def parse_archive_dictionary(self):
         self.objects = []
-
         for index, obj in enumerate(self.archive_dictionary['$objects']):
             node = KeyedArchiveObjectGraphNode.node_for_serialized_representation(index, obj, self)
             if not node:
@@ -498,10 +497,21 @@ class KeyedArchive(object):
         assert archive_bytes, 'Missing input data'
         archive_bytes = cls.process_data_for_input_configuration(archive_bytes, configuration)
         archive_bytes = bytearray(archive_bytes)
-        archive_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(archive_bytes, 0, None, None)
-        if not archive_dictionary:
+        property_list_object, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(archive_bytes, 0, None, None)
+        if not property_list_object:
             return None, error
-        return cls(archive_dictionary, configuration), None
+
+        archive_dictionary = None
+        try:
+            if '$objects' in property_list_object:
+                archive_dictionary = dict(property_list_object)
+        except:
+            pass
+
+        if not archive_dictionary:
+            raise Exception('Decoding property list data shown below does not result in dictionary:\n{}'.format(archive_bytes))
+
+        return cls(property_list_object, configuration), None
 
     @classmethod
     def archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql, configuration):
@@ -517,6 +527,7 @@ class KeyedArchive(object):
         archives = []
         for row in cursor:
             archive_bytes, extra_fields = row[0], cls.sanitize_row(row[1:])
+            archive_bytes = buffer(archive_bytes)
             archive = None
             error = None
             if archive_bytes:
@@ -527,8 +538,8 @@ class KeyedArchive(object):
         return archives
 
     @classmethod
-    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql=''):
-        rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns, extra_sql)
+    def dump_archives_from_sqlite_table_column(cls, connection, table_name, column_name, extra_columns, extra_sql='', configuration=None):
+        rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns, extra_sql, configuration)
         for row in rows:
             if row.extra_data:
                 print row.extra_data
