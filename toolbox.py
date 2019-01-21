@@ -114,8 +114,13 @@ class Tool(object):
     
     @classmethod
     def enumerate_known_tool_classes(cls):
+        # This enumerates all descendant leaf classes but not abstract subclasses such as PKGBasedTool
         for subclass in cls.__subclasses__():
-            yield subclass.identifier(), subclass
+            if subclass.__subclasses__():
+                for identifier, descendant in subclass.enumerate_known_tool_classes():
+                    yield identifier, descendant
+            else:
+                yield subclass.identifier(), subclass
 
     @classmethod
     def enumerate_installed_tools(cls):
@@ -127,7 +132,7 @@ class Tool(object):
 
     @classmethod
     def known_identifiers(cls):
-        return [s.identifier() for s in cls.__subclasses__()]
+        return [i for i, _ in cls.enumerate_known_tool_classes()]
 
     @classmethod
     def identifier(cls):
@@ -269,7 +274,20 @@ class ToolExifTool(Tool):
         self.dmgtool_install_package(archive_path)
 
 
-class ToolPython3(Tool):
+class PKGBasedTool(Tool):
+
+    def latest_version(self):
+        return pkg_resources.parse_version(self.server_version)
+    
+    def latest_version_archive_url(self):
+        return self.archive_url
+
+    def install_archive(self, archive_path):
+        cmd = ['sudo', 'installer', '-pkg', archive_path, '-target', '/']
+        print(subprocess.check_output(cmd))
+    
+
+class ToolPython3(PKGBasedTool):
 
     def __init__(self):
         download_page_url = 'https://www.python.org/downloads/'
@@ -285,15 +303,23 @@ class ToolPython3(Tool):
     def installed_version(self):
         return self.version_from_process_output(['python3', '-V'], r'\b([0-9.]+)\b')
 
-    def latest_version(self):
-        return pkg_resources.parse_version(self.server_version)
-    
-    def latest_version_archive_url(self):
-        return self.archive_url
 
-    def install_archive(self, archive_path):
-        cmd = ['sudo', 'installer', '-pkg', archive_path, '-target', '/']
-        print(subprocess.check_output(cmd))
+class ToolNode(PKGBasedTool):
+
+    def __init__(self):
+        download_page_url = 'https://nodejs.org/en/'
+        request = urllib2.Request(download_page_url)
+        response = urllib2.urlopen(request)
+        self.data = response.read()
+        result = re.findall(r'<a href="(https://nodejs\.org/dist/v.*?/)".*?title="Download .*?Current".*?data-version="v([0-9\.]+)', self.data)
+        if not result:
+            print(self.data)
+            raise Exception('Unable to find pkg link in page content of {}'.format(download_page_url))
+        self.archive_url, self.server_version = result[0]
+        self.archive_url += 'node-v{}.pkg'.format(self.server_version)
+    
+    def installed_version(self):
+        return self.version_from_process_output(['node', '--version'], r'v([0-9.]+)\b')
 
 
 class AbstractSubcommand(object):
@@ -322,7 +348,7 @@ class AbstractSubcommand(object):
         if self.args.tool_identifier:
             for i in self.args.tool_identifier:
                 tool = Tool.tool_for_identifier(i)
-                yield tool
+                yield i, tool
         else:
             for tool in Tool.enumerate_installed_tools():
                 yield tool
