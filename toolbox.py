@@ -309,6 +309,7 @@ class ToolNode(PKGBasedTool):
     def __init__(self):
         download_page_url = 'https://nodejs.org/en/'
         request = urllib2.Request(download_page_url)
+        logging.debug('Loading {}'.format(download_page_url))
         response = urllib2.urlopen(request)
         self.data = response.read()
         result = re.findall(r'<a href="(https://nodejs\.org/dist/v.*?/)".*?title="Download .*?Current".*?data-version="v([0-9\.]+)', self.data)
