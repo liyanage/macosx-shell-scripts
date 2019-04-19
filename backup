@@ -1,0 +1,44 @@
+#!/bin/sh
+
+if (( $# < 2)); then
+    echo "Usage: $0 status|exclude|include" path
+    return 1
+fi
+
+local action=$1
+local target_path=$2
+
+if [[ ! -e $target_path ]]; then
+    echo "File not found: $target_path"
+    return 1
+fi
+
+xattr -pl com.apple.metadata:com_apple_backup_excludeItem "$target_path" >/dev/null 2>&1 && local is_currently_excluded=1
+
+case $action in
+    status)
+        if [[ $is_currently_excluded ]]; then
+            echo "Item is excluded from backup"
+        else
+            echo "Item is not excluded from backup"
+        fi
+        ;;
+
+    exclude)
+        if [[ $is_currently_excluded ]]; then
+            echo "Item is already excluded from backup"
+        else
+            xattr -w com.apple.metadata:com_apple_backup_excludeItem com.apple.backupd "$target_path"
+            echo "Item is now excluded from backup"
+        fi
+        ;;
+
+    include)
+        if [[ $is_currently_excluded ]]; then
+            echo "Item is now included in backup"
+            xattr -d com.apple.metadata:com_apple_backup_excludeItem "$target_path"
+        else
+            echo "Item is already included in backup"
+        fi
+        ;;
+esac
