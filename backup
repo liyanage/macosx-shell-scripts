@@ -2,18 +2,18 @@
 
 if (( $# < 2)); then
     echo "Usage: $0 status|exclude|include" path
-    return 1
+    exit 1
 fi
 
-local action=$1
-local target_path=$2
+action=$1
+target_path=$2
 
 if [[ ! -e $target_path ]]; then
     echo "File not found: $target_path"
-    return 1
+    exit 1
 fi
 
-xattr -pl com.apple.metadata:com_apple_backup_excludeItem "$target_path" >/dev/null 2>&1 && local is_currently_excluded=1
+xattr -pl com.apple.metadata:com_apple_backup_excludeItem "$target_path" >/dev/null 2>&1 && is_currently_excluded=1
 
 case $action in
     status)
