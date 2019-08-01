@@ -72,7 +72,7 @@ class KeyedArchiveObjectGraphNode(object):
             # Attempt to parse as another keyed archive
             child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
             if child_archive:
-                ascii_dump = child_archive.dump_string()
+                ascii_dump = child_archive.dump_string().strip()
                 decoding_remark = 'keyed archive'
 
         if not ascii_dump:
