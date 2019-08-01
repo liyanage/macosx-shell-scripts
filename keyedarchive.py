@@ -648,22 +648,30 @@ class KeyedArchive(object):
 
 class InputOutputConfiguration(object):
 
+    def __init__(self, output_dump_encoding='hex', output_dump_length=32, input_data_offset=0, input_data_compression_type_and_options=(None, None)):
+        self._output_dump_encoding = output_dump_encoding
+        self._output_dump_length = output_dump_length
+        self._input_data_offset = input_data_offset
+        self._input_data_compression_type_and_options = input_data_compression_type_and_options
+
+
     def output_dump_encoding(self):
-        return 'hex'
+        return self._output_dump_encoding
 
     def output_dump_length(self):
-        return 32
+        return self._output_dump_length
 
     def input_data_offset(self):
-        return 0
+        return self._input_data_offset
 
     def input_data_compression_type_and_options(self):
-        return None, None
+        return self._input_data_compression_type_and_options
 
 
 class ArgumentParseInputOutputConfiguration(InputOutputConfiguration):
 
     def __init__(self, args):
+        super(ArgumentParseInputOutputConfiguration, self).__init__()
         self.args = args
 
     def output_dump_encoding(self):
