@@ -59,6 +59,11 @@ class KeyedArchiveObjectGraphNode(object):
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def ascii_dump_for_data(self, dump_bytes):
+        # Attempt to parse as another keyed archive
+        child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
+        if child_archive:
+            return child_archive.dump_string().strip(), 'keyed archive'
+
         length_limit = self.archive.input_output_configuration.output_dump_length()
         original_length = len(dump_bytes)
         if length_limit >= 0:
@@ -66,25 +71,15 @@ class KeyedArchiveObjectGraphNode(object):
         truncated_length = len(dump_bytes)
         omitted_byte_count = original_length - truncated_length
 
-        ascii_dump = None
-        decoding_remark = ''
-        if not omitted_byte_count:
-            # Attempt to parse as another keyed archive
-            child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
-            if child_archive:
-                ascii_dump = child_archive.dump_string().strip()
-                decoding_remark = 'keyed archive'
-
-        if not ascii_dump:
-            if self.archive.input_output_configuration.output_dump_encoding() == 'hex':
-                ascii_dump = self.hexencode_and_wrap(dump_bytes)
-            else:
-                ascii_dump = self.b64encode_and_wrap(dump_bytes)
+        if self.archive.input_output_configuration.output_dump_encoding() == 'hex':
+            ascii_dump = self.hexencode_and_wrap(dump_bytes)
+        else:
+            ascii_dump = self.b64encode_and_wrap(dump_bytes)
 
         if omitted_byte_count:
             ascii_dump += '\n[+ {} bytes]'.format(omitted_byte_count)
 
-        return ascii_dump, decoding_remark
+        return ascii_dump, None
 
     def __getitem__(self, key):
         raise Exception('{} must override __getitem__()'.format(self.__class__))
