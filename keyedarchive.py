@@ -22,7 +22,7 @@ import logging
 import zlib
 import binascii
 import textwrap
-
+import uuid
 
 class KeyedArchiveObjectGraphNode(object):
 
@@ -66,15 +66,25 @@ class KeyedArchiveObjectGraphNode(object):
         truncated_length = len(dump_bytes)
         omitted_byte_count = original_length - truncated_length
 
-        if self.archive.input_output_configuration.output_dump_encoding() == 'hex':
-            ascii_dump = self.hexencode_and_wrap(dump_bytes)
-        else:
-            ascii_dump = self.b64encode_and_wrap(dump_bytes)
+        ascii_dump = None
+        decoding_remark = ''
+        if not omitted_byte_count:
+            # Attempt to parse as another keyed archive
+            child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
+            if child_archive:
+                ascii_dump = child_archive.dump_string()
+                decoding_remark = 'keyed archive'
+
+        if not ascii_dump:
+            if self.archive.input_output_configuration.output_dump_encoding() == 'hex':
+                ascii_dump = self.hexencode_and_wrap(dump_bytes)
+            else:
+                ascii_dump = self.b64encode_and_wrap(dump_bytes)
 
         if omitted_byte_count:
             ascii_dump += '\n[+ {} bytes]'.format(omitted_byte_count)
 
-        return ascii_dump
+        return ascii_dump, decoding_remark
 
     def __getitem__(self, key):
         raise Exception('{} must override __getitem__()'.format(self.__class__))
@@ -164,7 +174,7 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
 #            if callable(getattr(value, 'dump_string', None)):
                 description = value.dump_string(seen=seen)
             else:
-                description = unicode(value)
+                description = str(value)
             longest_key_padding = ' ' * (max_key_len - len(key))
             longest_key_value_indent = max_key_len + 2
             lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
@@ -208,8 +218,11 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        ascii_dump = self.ascii_dump_for_data(self.properties['NS.data'].bytes())
-        return u'<NSMutableData length {}>\n{}'.format(self.properties['NS.data'].length(), ascii_dump)
+        raw_bytes = self.properties['NS.data'].bytes()
+        text_representation, decoding_remark = self.ascii_dump_for_data(raw_bytes)
+        if decoding_remark:
+            decoding_remark = ' ({})'.format(decoding_remark)
+        return u'<NSMutableData length {}>{}\n{}'.format(self.properties['NS.data'].length(), decoding_remark, text_representation)
 
     def resolve_references(self, archive):
         super(KeyedArchiveObjectGraphNSMutableDataNode, self).resolve_references(archive)
@@ -227,8 +240,21 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
         return cls.is_nsdata(serialized_representation)
 
     def dump_string(self, seen=None):
-        ascii_dump = self.ascii_dump_for_data(self.serialized_representation.bytes())
-        return u'<NSData length {}>\n{}'.format(self.serialized_representation.length(), ascii_dump)
+        text_representation, decoding_remark = self.ascii_dump_for_data(self.serialized_representation.bytes())
+        if decoding_remark:
+            decoding_remark = ' ({})'.format(decoding_remark)
+        return u'<NSData length {}>{}\n{}'.format(self.serialized_representation.length(), decoding_remark, text_representation)
+
+
+class KeyedArchiveObjectGraphUUIDNode(KeyedArchiveObjectGraphInstanceNode):
+
+    @classmethod
+    def can_parse_serialized_representation(cls, serialized_representation):
+        return 'NS.uuidbytes' in serialized_representation
+
+    def dump_string(self, seen=None):
+        ascii_dump = uuid.UUID(bytes=self.serialized_representation['NS.uuidbytes'])
+        return u'<NSUUID {}>'.format(ascii_dump)
 
 
 class KeyedArchiveObjectGraphBoolNode(KeyedArchiveObjectGraphNode):
@@ -655,6 +681,24 @@ class ArgumentParseInputOutputConfiguration(InputOutputConfiguration):
             match = re.match(r'(\w+)(?::(\w+))?', compression)
             assert match, 'Invalid compression option'
             return match.groups()
+        return None, None
+
+
+class ChildArchiveInputOutputConfiguration(InputOutputConfiguration):
+
+    def __init__(self, wrapped_configuration):
+        self.wrapped_configuration = wrapped_configuration
+
+    def output_dump_encoding(self):
+        return self.wrapped_configuration.output_dump_encoding()
+
+    def output_dump_length(self):
+        return self.wrapped_configuration.output_dump_length()
+
+    def input_data_offset(self):
+        return 0
+
+    def input_data_compression_type_and_options(self):
         return None, None
 
 
