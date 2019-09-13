@@ -14,6 +14,7 @@ import argparse
 import Foundation
 import re
 import objc
+import json
 import base64
 import collections
 import tempfile
@@ -59,10 +60,12 @@ class KeyedArchiveObjectGraphNode(object):
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def ascii_dump_for_data(self, dump_bytes):
-        # Attempt to parse as another keyed archive
-        child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
-        if child_archive:
-            return child_archive.dump_string().strip(), 'keyed archive'
+        # Attempt to parse as known binary format
+        dump_bytes = memoryview(dump_bytes).tobytes()
+        dump_and_label = self.ascii_dump_and_type_label_for_known_binary_data_format(dump_bytes)
+        if dump_and_label:
+            ascii_representation, content_type_label = dump_and_label
+            return ascii_representation, content_type_label
 
         length_limit = self.archive.input_output_configuration.output_dump_length()
         original_length = len(dump_bytes)
@@ -80,6 +83,32 @@ class KeyedArchiveObjectGraphNode(object):
             ascii_dump += '\n[+ {} bytes]'.format(omitted_byte_count)
 
         return ascii_dump, None
+    
+    def ascii_dump_and_type_label_for_known_binary_data_format(self, dump_bytes):
+        # Attempt to parse as another keyed archive
+        child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
+        if child_archive:
+            return child_archive.dump_string().strip(), 'keyed archive'
+
+        type_label = None
+        # Attempt to decompress
+        try:
+            dump_bytes = zlib.decompress(dump_bytes, -15)
+            type_label = 'zlib compressed'
+            nested_dump, label = self.ascii_dump_for_data(dump_bytes)
+            if label:
+                type_label += ', ' + label
+            return nested_dump, type_label        
+        except zlib.error:
+            pass
+
+        try:
+            json_content = json.loads(dump_bytes)
+            json_pretty_printed = json.dumps(json_content, indent=2)
+            return json_pretty_printed, 'JSON'
+        except ValueError:
+            pass
+
 
     def __getitem__(self, key):
         raise Exception('{} must override __getitem__()'.format(self.__class__))
@@ -217,6 +246,8 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         text_representation, decoding_remark = self.ascii_dump_for_data(raw_bytes)
         if decoding_remark:
             decoding_remark = ' ({})'.format(decoding_remark)
+        else:
+            decoding_remark = ''
         return u'<NSMutableData length {}>{}\n{}'.format(self.properties['NS.data'].length(), decoding_remark, text_representation)
 
     def resolve_references(self, archive):
@@ -238,6 +269,8 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
         text_representation, decoding_remark = self.ascii_dump_for_data(self.serialized_representation.bytes())
         if decoding_remark:
             decoding_remark = ' ({})'.format(decoding_remark)
+        else:
+            decoding_remark = ''
         return u'<NSData length {}>{}\n{}'.format(self.serialized_representation.length(), decoding_remark, text_representation)
 
 
