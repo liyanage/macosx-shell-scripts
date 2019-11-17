@@ -16,6 +16,9 @@ import pkg_resources
 import urllib2
 import json
 import tarfile
+import zipfile
+import shutil
+import glob
 
 
 class GitHubReleaseAsset(object):
@@ -59,20 +62,24 @@ class GitHubRelease(object):
         return self.cached_server_data
 
     def version(self):
+        logging.debug('GitHub release version() server data: {}'.format(self.server_data()))
         if not self.server_data():
             return None
         return pkg_resources.parse_version(self.version_number_accessor(self))
-    
-    def name(self):
+
+    def server_data_item(self, key):
         data = self.server_data()
         if not data:
             return None
-        return data['name']
+        return data[key]
+
+    def name(self):
+        return self.server_data_item('name')
     
     @classmethod
-    def version_number_accessor_for_name_regex(cls, regex):
+    def version_number_accessor_for_server_data_item_regex(cls, data_item_key, regex):
         def accessor(release):
-            result = re.findall(regex, release.name())
+            result = re.findall(regex, release.server_data_item(data_item_key))
             assert result and len(result) == 1, 'Unable to find version number in "{}" using regex "{}"'.format(release.name(), regex)
             return result[0]
         return accessor
@@ -151,12 +158,21 @@ class Tool(object):
     def is_out_of_date(self):
         installed_version = self.installed_version()
         if not installed_version:
+            print('Tool {} is not installed. Install it first with the "install" action.'.format(self.identifier()), file=sys.stderr)
             return False
         latest_version = self.latest_version()
         if not latest_version:
             print('Unable to check if {} is current because the latest version is unavailable'.format(self.identifier()), file=sys.stderr)
             return False
         return latest_version > installed_version
+    
+    def empty_install_staging_dir_path(self):
+        temp_file_path = os.path.join(os.environ['TMPDIR'], 'toolbox.py-install-' + self.identifier())
+        if os.path.exists(temp_file_path):
+            shutil.rmtree(temp_file_path)
+        os.mkdir(temp_file_path)
+        return temp_file_path
+
 
     def install_latest_version(self):
         if not self.latest_version():
@@ -200,22 +216,13 @@ class Tool(object):
             return None        
         if regex:
             version_matches = re.findall(regex, version_string)
-            assert len(version_matches) == 1, 'Unable to find version number in "{}"'.format(version_string)
+            assert len(version_matches) == 1, 'Unable to find version number in "{}" ({})'.format(version_string, len(version_matches))
             version_string = version_matches[0]
         return pkg_resources.parse_version(version_string)
 
 
-class ToolHugo(Tool):
+class GitHubReleaseBasedTool(Tool):
 
-    def __init__(self):
-        self.repo = GitHubRepo('gohugoio', 'hugo')
-        self.release = GitHubRelease(self.repo, 'latest',
-            version_number_accessor=GitHubRelease.version_number_accessor_for_name_regex(self.version_regex()),
-            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'extended_.*_macOS-64bit'))
-
-    def installed_version(self):
-        return self.version_from_process_output(['hugo', 'version'], self.version_regex())
-    
     @classmethod
     def version_regex(cls):
         return r'\bv((?:[0-9]|\.)+)\b'
@@ -226,10 +233,64 @@ class ToolHugo(Tool):
     def latest_version_archive_url(self):
         return self.release.preferred_asset().download_url()
 
+
+class ToolHugo(GitHubReleaseBasedTool):
+
+    def __init__(self):
+        self.repo = GitHubRepo('gohugoio', 'hugo')
+        self.release = GitHubRelease(self.repo, 'latest',
+            version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('name', self.version_regex()),
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'extended_.*_macOS-64bit'))
+
+    def installed_version(self):
+        return self.version_from_process_output(['hugo', 'version'], self.version_regex())
+    
     def install_archive(self, archive_path):
         archive = tarfile.open(archive_path)
         members = [m for m in archive.getmembers() if m.name == 'hugo']
         archive.extractall(path=os.path.expanduser('~/Documents/websites/hugo/'), members=members)
+
+
+class ToolNinja(GitHubReleaseBasedTool):
+
+    def __init__(self):
+        self.repo = GitHubRepo('ninja-build', 'ninja')
+        self.release = GitHubRelease(self.repo, 'latest',
+            version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('tag_name', self.version_regex()),
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'ninja-mac.zip'))
+
+    def installed_version(self):
+        return self.version_from_process_output(['ninja', '--version'], r'\b((?:[0-9]|\.)+)\b')
+    
+    def install_archive(self, archive_path):
+        archive = zipfile.ZipFile(archive_path)
+        archive.extractall(path=os.path.expanduser('~/bin/'), members=['ninja'])
+        os.chmod(os.path.expanduser('~/bin/ninja'), 0755)
+
+
+class ToolCmake(GitHubReleaseBasedTool):
+
+    def __init__(self):
+        self.repo = GitHubRepo('Kitware', 'CMake')
+        self.release = GitHubRelease(self.repo, 'latest',
+            version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('tag_name', self.version_regex()),
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'cmake-\d+\.\d+.\d+-Darwin-x86_64.tar.gz'))
+
+    def installed_version(self):
+        return self.version_from_process_output(['cmake', '--version'], r'cmake version ((?:[0-9]|\.)+)')
+    
+    def install_archive(self, archive_path):
+        archive = tarfile.open(archive_path)
+        # logging.debug('archive members: {}'.format('\n'.join([ti.name for ti in archive.getmembers()])))
+        staging_dir_path = self.empty_install_staging_dir_path()
+        archive.extractall(path=staging_dir_path)
+        app_paths = glob.glob(staging_dir_path + '/cmake-*Darwin*/CMake.app')
+        assert len(app_paths) == 1, 'Unable to find app paths in "{}"'.format(staging_dir_path)
+        app_path = app_paths[0]
+        target_app_path = '/Applications/CMake.app'
+        if os.path.exists(target_app_path):
+            shutil.rmtree(target_app_path)
+        shutil.move(app_path, target_app_path)
 
 
 class ToolExifTool(Tool):
