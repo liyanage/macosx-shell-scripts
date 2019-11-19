@@ -19,6 +19,7 @@ import tarfile
 import zipfile
 import shutil
 import glob
+import contextlib
 
 
 class GitHubReleaseAsset(object):
@@ -31,6 +32,9 @@ class GitHubReleaseAsset(object):
     
     def download_url(self):
         return self.asset_info['browser_download_url']
+    
+    def __repr__(self):
+        return '<GitHubReleaseAsset name={}>'.format(self.name())
 
     @classmethod
     def predicate_for_name_regex(cls, regex):
@@ -86,6 +90,7 @@ class GitHubRelease(object):
 
     def assets(self, predicate=None):
         assets = [GitHubReleaseAsset(asset_info) for asset_info in self.server_data()['assets']]
+        logging.debug('assets before filtering: {}'.format([a.name() for a in assets]))
         if predicate:
             assets = [a for a in assets if predicate(a)]
         return assets
@@ -93,7 +98,8 @@ class GitHubRelease(object):
     def preferred_asset(self):
         assert self.preferred_asset_predicate
         assets = self.assets(predicate=self.preferred_asset_predicate)
-        assert len(assets) == 1
+        matching_assets_count = len(assets)
+        assert matching_assets_count == 1, 'Expected 1 asset, found {}: {}'.format(matching_assets_count, assets)
         return assets[0]
 
 
@@ -145,6 +151,18 @@ class Tool(object):
     def identifier(cls):
         assert cls.__name__.startswith('Tool'), 'Class name of {} must start with "Tool" or class must override "identifier()"'
         return cls.__name__[len('Tool'):].lower()
+
+    @classmethod
+    @contextlib.contextmanager
+    def chdir_to_path(cls, path):
+        oldwd = os.getcwd()
+        os.chdir(path)
+        try:
+            yield
+        except:
+            os.chdir(oldwd)
+            raise
+        os.chdir(oldwd)
 
     def is_installed(self):
         return self.installed_version() is not None
@@ -281,7 +299,6 @@ class ToolCmake(GitHubReleaseBasedTool):
     
     def install_archive(self, archive_path):
         archive = tarfile.open(archive_path)
-        # logging.debug('archive members: {}'.format('\n'.join([ti.name for ti in archive.getmembers()])))
         staging_dir_path = self.empty_install_staging_dir_path()
         archive.extractall(path=staging_dir_path)
         app_paths = glob.glob(staging_dir_path + '/cmake-*Darwin*/CMake.app')
@@ -291,6 +308,31 @@ class ToolCmake(GitHubReleaseBasedTool):
         if os.path.exists(target_app_path):
             shutil.rmtree(target_app_path)
         shutil.move(app_path, target_app_path)
+
+
+class ToolCcache(GitHubReleaseBasedTool):
+
+    def __init__(self):
+        self.repo = GitHubRepo('ccache', 'ccache')
+        self.release = GitHubRelease(self.repo, 'latest',
+            version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('tag_name', self.version_regex()),
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'ccache-(\d+|\.)+\d+\.tar\.gz$'))
+            
+    def installed_version(self):
+        return self.version_from_process_output(['ccache', '--version'], r'ccache version ((?:[0-9]|\.)+)')
+    
+    def install_archive(self, archive_path):
+        archive = tarfile.open(archive_path)
+        staging_dir_path = self.empty_install_staging_dir_path()
+        archive.extractall(path=staging_dir_path)
+        print(staging_dir_path)
+
+        members = [ti.name for ti in archive.getmembers()]
+        toplevel_dir = members[0]
+        source_path = os.path.join(staging_dir_path, toplevel_dir)
+        with self.chdir_to_path(source_path):
+            subprocess.check_call(['./configure'])
+            subprocess.check_call(['sudo', 'make', 'install'])
 
 
 class ToolExifTool(Tool):
