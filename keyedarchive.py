@@ -85,6 +85,9 @@ class KeyedArchiveObjectGraphNode(object):
         return ascii_dump, None
     
     def ascii_dump_and_type_label_for_known_binary_data_format(self, dump_bytes):
+        if self.archive.input_output_configuration.dont_decode_data():
+            return None
+
         # Attempt to parse as another keyed archive
         child_archive, error = KeyedArchive.archive_from_bytes(dump_bytes, ChildArchiveInputOutputConfiguration(self.archive.input_output_configuration))
         if child_archive:
@@ -710,6 +713,9 @@ class ArgumentParseInputOutputConfiguration(InputOutputConfiguration):
 
     def input_data_offset(self):
         return self.args.input_data_offset
+    
+    def dont_decode_data(self):
+        return self.args.dont_decode_data
 
     def input_data_compression_type_and_options(self):
         compression = self.args.input_data_compression
@@ -795,6 +801,7 @@ class KeyedArchiveTool(object):
         parser.add_argument('-v', '--verbose', action='store_true', help='Enable some additional debug logging output')
 
         input_output_configuration_group = parser.add_argument_group(title='Input/output options', description='Input/output configuration options')
+        input_output_configuration_group.add_argument('--dont-decode-data', action='store_true', help='Do not attempt to interpret binary data')
         input_output_configuration_group.add_argument('--output-dump-length', type=int, default=32, help='Truncate binary data dumps to the given length. Defaults to 32. Set to -1 to allow unlimited length.')
         input_output_configuration_group.add_argument('--output-dump-encoding', choices=['base64', 'hex'], default='hex', help='ASCII format for binary data dumps. Defaults to "hex".')
         input_output_configuration_group.add_argument('--input-data-offset', type=int, help='Offset in bytes from the start of the byte stream to the start of the serialized keyed archiver data')
