@@ -339,7 +339,7 @@ class ToolExifTool(Tool):
 
     def __init__(self):
         self.cached_server_data = None
-        self.info_page_url = 'http://www.sno.phy.queensu.ca/~phil/exiftool/'
+        self.info_page_url = 'https://exiftool.org'
     
     def server_data(self):
         if not self.cached_server_data:
