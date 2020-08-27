@@ -698,6 +698,9 @@ class InputOutputConfiguration(object):
     def input_data_compression_type_and_options(self):
         return self._input_data_compression_type_and_options
 
+    def dont_decode_data(self):
+        return False
+
 
 class ArgumentParseInputOutputConfiguration(InputOutputConfiguration):
 
