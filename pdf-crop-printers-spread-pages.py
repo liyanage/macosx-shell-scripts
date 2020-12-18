@@ -72,14 +72,21 @@ class Tool(object):
 
         first_page = reader.getPage(0)
         media_box = first_page.mediaBox
-        crops = [PyPDF2.generic.RectangleObject([0, 0, media_box.getUpperRight_x(), media_box.getUpperRight_y() / 2]), PyPDF2.generic.RectangleObject([0, media_box.getUpperRight_y() / 2, media_box.getUpperRight_x(), media_box.getUpperRight_y()])]
 
+        offset = self.args.reduce_margin_offset
+
+        crops = [PyPDF2.generic.RectangleObject([0 + offset, 0 + offset, media_box.getUpperRight_x() - offset, media_box.getUpperRight_y() / 2 - offset]), PyPDF2.generic.RectangleObject([0 + offset, media_box.getUpperRight_y() / 2 + offset, media_box.getUpperRight_x() - offset, media_box.getUpperRight_y() - offset])]
+
+        # final page numbers [1, n/2], the first output page is on the right side
+        # # of the first input page, the next output page on the left side of the
+        # second input page etc. We flip back and forth for each input page.
         for i in range(page_count):
             page = reader.getPage(i)
             page.cropBox = crops[0]
             self.writer.addPage(page)
             crops = list(reversed(crops))
 
+        # final page numbers [n/2+1, n], the first one is on the left side of the first input page.
         reader = PyPDF2.PdfFileReader(input_pdf_path.as_posix())
         for i in range(page_count - 1, -1, -1):
             page = reader.getPage(i)
@@ -93,6 +100,7 @@ class Tool(object):
     @classmethod
     def main(cls):
         parser = argparse.ArgumentParser(description='Duplicate and crop pages in a PDF that has the pages laid out in "printer\'s spread"')
+        parser.add_argument('--reduce-margin-offset', type=float, default=0, help='Offset by which to shrink the crop box to reduce blank margin space')
         parser.add_argument('path', type=PurePath, help='Path to input PDF')
 
         args = parser.parse_args()
