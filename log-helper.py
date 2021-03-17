@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 
 import sys
-import argparse
-import logging
 from pathlib import Path
 import subprocess
 import datetime
 import json
-import copy
 from typing import Optional
 
 
