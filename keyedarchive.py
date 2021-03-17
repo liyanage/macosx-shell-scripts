@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Decode NSKeyedArchiver blobs for debugging purposes
 #
@@ -7,16 +7,16 @@
 # See https://github.com/liyanage/macosx-shell-scripts
 #
 
-import os
 import sys
 import sqlite3
 import argparse
-import Foundation
+import functools
+import datetime
 import re
-import objc
 import json
 import base64
 import collections
+import plistlib
 import tempfile
 import subprocess
 import logging
@@ -24,6 +24,9 @@ import zlib
 import binascii
 import textwrap
 import uuid
+
+def cmp(x, y):
+    return (x > y) - (x < y)
 
 class KeyedArchiveObjectGraphNode(object):
 
@@ -56,7 +59,7 @@ class KeyedArchiveObjectGraphNode(object):
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def hexencode_and_wrap(self, bytes):
-        dump = binascii.hexlify(bytes)
+        dump = str(binascii.hexlify(bytes))
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def ascii_dump_for_data(self, dump_bytes):
@@ -126,26 +129,22 @@ class KeyedArchiveObjectGraphNode(object):
 
     @classmethod
     def node_for_serialized_representation(cls, identifier, serialized_representation, archive):
+        logging.debug(f'Finding class to parse: {type(serialized_representation).__name__} "{serialized_representation}"')
         for node_class in cls.__subclasses__():
-            if node_class.can_parse_serialized_representation(serialized_representation):
+            class_can_parse = node_class.can_parse_serialized_representation(serialized_representation)
+            logging.debug(f'Node class "{node_class.__name__}": {class_can_parse}')
+            if class_can_parse:
                 return node_class.parse_serialized_representation(identifier, serialized_representation, archive)
         return None
 
     @classmethod
-    def is_nsdictionary(cls, value):
-        return hasattr(value, 'isNSDictionary__') and value.isNSDictionary__()
-
-    @classmethod
-    def is_nsdata(cls, value):
-        return hasattr(value, 'isNSData__') and value.isNSData__()
+    def is_data(cls, value):
+        return isinstance(value, bytes)
 
     @classmethod
     def keyed_archiver_uid_for_value(cls, value):
-        if hasattr(value, 'className') and value.className() == '__NSCFType':
-            # TODO: find a non-hacky way to get at the value
-            ids = re.findall(r'^<CFKeyedArchiverUID.+>\{value = (\d+)\}', unicode(value))
-            if ids:
-                return int(ids[0])
+        if isinstance(value, plistlib.UID):
+            return value.data
         return None
 
 
@@ -195,7 +194,7 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
 
         lines = [instance_header]
         max_key_len = max(map(len, keys))
-        case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0], cmp=lambda a, b: cmp(a.lower(), b.lower()))
+        case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0].lower())
         for key, value in case_insensitive_sorted_property_items:
             if isinstance(value, KeyedArchiveObjectGraphNode):
 #            if callable(getattr(value, 'dump_string', None)):
@@ -218,7 +217,7 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return cls.is_nsdictionary(serialized_representation) and '$class' in serialized_representation
+        return isinstance(serialized_representation, dict) and '$class' in serialized_representation
 
     @classmethod
     def parse_serialized_representation(cls, identifier, serialized_representation, archive):
@@ -235,7 +234,7 @@ class KeyedArchiveObjectGraphNSDateNode(KeyedArchiveObjectGraphInstanceNode):
         return 'NS.time' in serialized_representation
 
     def dump_string(self, seen=None):
-        return unicode(Foundation.NSDate.dateWithTimeIntervalSinceReferenceDate_(self.serialized_representation['NS.time']))
+        return str(datetime.datetime(2001, 1, 1) + datetime.timedelta(seconds=self.serialized_representation['NS.time']))
 
 
 class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNode):
@@ -245,13 +244,13 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         return 'NS.data' in serialized_representation
 
     def dump_string(self, seen=None):
-        raw_bytes = self.properties['NS.data'].bytes()
+        raw_bytes = self.properties['NS.data']
         text_representation, decoding_remark = self.ascii_dump_for_data(raw_bytes)
         if decoding_remark:
             decoding_remark = ' ({})'.format(decoding_remark)
         else:
             decoding_remark = ''
-        return u'<NSMutableData length {}>{}\n{}'.format(self.properties['NS.data'].length(), decoding_remark, text_representation)
+        return u'<NSMutableData length {}>{}\n{}'.format(len(self.properties['NS.data']), decoding_remark, text_representation)
 
     def resolve_references(self, archive):
         super(KeyedArchiveObjectGraphNSMutableDataNode, self).resolve_references(archive)
@@ -266,15 +265,15 @@ class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return cls.is_nsdata(serialized_representation)
+        return cls.is_data(serialized_representation)
 
     def dump_string(self, seen=None):
-        text_representation, decoding_remark = self.ascii_dump_for_data(self.serialized_representation.bytes())
+        text_representation, decoding_remark = self.ascii_dump_for_data(self.serialized_representation)
         if decoding_remark:
             decoding_remark = ' ({})'.format(decoding_remark)
         else:
             decoding_remark = ''
-        return u'<NSData length {}>{}\n{}'.format(self.serialized_representation.length(), decoding_remark, text_representation)
+        return u'<NSData length {}>{}\n{}'.format(len(self.serialized_representation), decoding_remark, text_representation)
 
 
 class KeyedArchiveObjectGraphUUIDNode(KeyedArchiveObjectGraphInstanceNode):
@@ -298,11 +297,11 @@ class KeyedArchiveObjectGraphBoolNode(KeyedArchiveObjectGraphNode):
         return 'True' if bool(self.serialized_representation) else 'False'
 
 
-class KeyedArchiveObjectGraphLongNode(KeyedArchiveObjectGraphNode):
+class KeyedArchiveObjectGraphIntNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return isinstance(serialized_representation, objc._pythonify.OC_PythonLong)
+        return isinstance(serialized_representation, int)
 
     def dump_string(self, seen=None):
         return str(self.serialized_representation)
@@ -312,7 +311,7 @@ class KeyedArchiveObjectGraphFloatNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return isinstance(serialized_representation, objc._pythonify.OC_PythonFloat)
+        return isinstance(serialized_representation, float)
 
     def dump_string(self, seen=None):
         return str(self.serialized_representation)
@@ -376,7 +375,7 @@ class KeyedArchiveObjectGraphClassNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return cls.is_nsdictionary(serialized_representation) and '$classname' in serialized_representation
+        return isinstance(serialized_representation, dict) and '$classname' in serialized_representation
 
     def dump_string(self):
         return self.serialized_representation['$classname']
@@ -386,10 +385,10 @@ class KeyedArchiveObjectGraphStringNode(KeyedArchiveObjectGraphNode):
 
     @classmethod
     def can_parse_serialized_representation(cls, serialized_representation):
-        return isinstance(serialized_representation, basestring)
+        return isinstance(serialized_representation, str)
 
     def dump_string(self, seen=None):
-        return unicode(self.serialized_representation)
+        return self.serialized_representation
 
 
 class KeyedArchiveInputData(object):
@@ -450,7 +449,7 @@ class KeyedArchiveInputData(object):
 
                 return cmp(b.priority(), a.priority())
 
-            items = sorted(items, cmp=item_comparator)
+            items = sorted(items, key=functools.cmp_to_key(item_comparator))
             item = items[0]
             if items[0].encoded_data_length() == 0:
                 # fall back to 'none'
@@ -536,17 +535,21 @@ class KeyedArchive(object):
         for key in self.top_object_keys():
             value = self.archive_dictionary['$top'][key]
             object_index = KeyedArchiveObjectGraphNode.keyed_archiver_uid_for_value(value)
+            logging.debug(f'top object key: {key}, value: {value}, index: {object_index}')
             if object_index is None:
                 result = key + ': ' + str(value) + '\n'
                 continue
             object_value = self.object_at_index(object_index)
+            logging.debug(f'result type 1: {type(result)}')
             result = result + key + ': ' + object_value.dump_string() + '\n'
+            logging.debug(f'result type 2: {type(result)}')
         return result
 
     def replacement_object_for_value(self, value):
         id = KeyedArchiveObjectGraphNode.keyed_archiver_uid_for_value(value)
         if id is None:
             return None
+        logging.debug(f'replacement object index: {id}')
         return self.object_at_index(id)
 
     @classmethod
@@ -554,9 +557,10 @@ class KeyedArchive(object):
         assert archive_bytes, 'Missing input data'
         archive_bytes = cls.process_data_for_input_configuration(archive_bytes, configuration)
         archive_bytes = bytearray(archive_bytes)
-        property_list_object, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(archive_bytes, 0, None, None)
-        if not property_list_object:
-            return None, error
+        try:
+            property_list_object = plistlib.loads(archive_bytes)
+        except:
+            return None, "unable to parse plist"
 
         archive_dictionary = None
         try:
@@ -576,7 +580,7 @@ class KeyedArchive(object):
         if extra_columns:
             columns.extend(extra_columns)
         sql = 'SELECT {} FROM {} {}'.format(', '.join(columns), table_name, extra_sql)
-        print sql
+        print(sql)
         cursor = connection.execute(sql)
 
         ArchiveDataRow = collections.namedtuple('ArchiveDataRow', 'archive extra_data error'.split())
@@ -599,32 +603,59 @@ class KeyedArchive(object):
         rows = cls.archives_from_sqlite_table_column(connection, table_name, column_name, extra_columns, extra_sql, configuration)
         for row in rows:
             if row.extra_data:
-                print row.extra_data
+                print(row.extra_data)
             if row.archive:
-                print row.archive.dump_string()
+                print(row.archive.dump_string())
             else:
                 if row.extra_data:
-                    print '(null)'
+                    print('(null)')
 
     @classmethod
     def sanitize_row(cls, row):
         return ['(null)' if i is None else i for i in row]
 
     @classmethod
+    def value_for_keypath(cls, value, keypath):
+        elements = keypath.split('.')
+
+        def resolve_keypath(value, keypath_elements):
+            logging.debug(f'resolving {keypath_elements} against {type(value)} {value}')
+
+            if not keypath_elements:
+                return value
+
+            key = keypath_elements.pop(0)
+
+            if value is None:
+                raise Exception(f'Unable to resolve keypath element {key} in {keypath}, value is None')
+            
+            if isinstance(value, dict):
+                return resolve_keypath(value.get(key, None), keypath_elements)
+            
+            if hasattr(value, key):
+                return resolve_keypath(getattr(value, key, None), keypath_elements)
+
+            raise Exception(f'Unable to resolve keypath element {key} against object of type {type(value)}')
+
+        return resolve_keypath(value, elements)
+
+            
+
+    @classmethod
     def dump_archive_from_plist_file(cls, plist_path, keypath, configuration):
-        with open(plist_path) as f:
+        with open(plist_path, 'rb') as f:
             bytes = f.read()
         assert bytes, 'Input file {} is empty'.format(plist_path)
         bytes = bytearray(bytes)
+        try:
+            property_list_object = plistlib.loads(bytes)
+        except:
+            raise Exception('Unable to read property list from {}'.format(plist_path))
 
-        plist_dictionary, format, error = Foundation.NSPropertyListSerialization.propertyListWithData_options_format_error_(bytes, 0, None, None)
-        if not plist_dictionary:
-            raise Exception('Unable to read property list from {}'.format(plist_dictionary))
-
-        value = plist_dictionary.valueForKeyPath_(keypath)
+        value = cls.value_for_keypath(property_list_object, keypath)
         if not value:
             raise Exception('Unable to find value with key path {} from plist at {}'.format(keypath, plist_path))
-        archive_bytes = value.bytes()
+        archive_bytes = value
 
         if not len(archive_bytes):
             raise Exception('Encountered zero-length archived data bytes stream for key path {} from plist at {}'.format(keypath, plist_path))
@@ -635,14 +666,14 @@ class KeyedArchive(object):
                 f.write(archive_bytes.tobytes())
             raise Exception('Unable to decode archive from data of length {} at key path {} from plist at {}'.format(len(archive_bytes), keypath, plist_path))
 
-        print archive.dump_string()
+        print(archive.dump_string())
 
     @classmethod
     def dump_archive_from_file(cls, archive_file, encoding, configuration, output_file=None):
         if not output_file:
             output_file = sys.stdout
         archive = cls.archive_from_file(archive_file, encoding, configuration)
-        print >> output_file, archive.dump_string().encode('utf-8')
+        print(archive.dump_string(), file=output_file)
 
     @classmethod
     def archive_from_file(cls, archive_file, encoding, configuration):
@@ -670,7 +701,7 @@ class KeyedArchive(object):
                 data = zlib.decompress(memoryview(data).tobytes(), wbits)
                 data = bytearray(data)
                 decompressed_length = len(data)
-                print 'Decompressed {} to {} bytes'.format(compressed_length, decompressed_length)
+                print('Decompressed {} to {} bytes'.format(compressed_length, decompressed_length))
             else:
                 raise Exception('Unsupported compression {}'.format(compression_type))
 
@@ -811,7 +842,7 @@ class KeyedArchiveTool(object):
         input_output_configuration_group.add_argument('--input-data-compression', help='Decompression to apply to serialized keyed archiver data after applying offset and before unarchiving. The "zlib" format is currently the only supported format. You can add decompression options after a colon, for zlib the option is the "window bits" parameter, e.g. "zlib:31"')
 
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
-        file_group.add_argument('infile', nargs='?', type=argparse.FileType('r'), help='The path to the input file. Pass - to read from stdin')
+        file_group.add_argument('infile', nargs='?', type=argparse.FileType('rb'), help='The path to the input file. Pass - to read from stdin')
         file_group.add_argument('--encoding', choices='auto hex base64 none'.split(), default='auto', help='The binary-to-text encoding, if any. The default is auto.')
         file_group.add_argument('--service-mode', action='store_true', help='Enable OS X service mode. Take input from stdin with auto-detected encoding and write the result to a temporary text file and open it with Safari.')
 
