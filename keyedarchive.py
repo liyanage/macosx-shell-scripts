@@ -21,14 +21,13 @@ import tempfile
 import subprocess
 import logging
 import zlib
-import binascii
 import textwrap
 import uuid
 
 def cmp(x, y):
     return (x > y) - (x < y)
 
-class KeyedArchiveObjectGraphNode(object):
+class KeyedArchiveObjectGraphNode:
 
     def __init__(self, identifier, serialized_representation, archive):
         self.identifier = identifier
@@ -55,11 +54,11 @@ class KeyedArchiveObjectGraphNode(object):
         return [text[i:i + length] for i in range(0, len(text), length)]
 
     def b64encode_and_wrap(self, bytes):
-        dump = base64.b64encode(bytes)
+        dump = base64.b64encode(bytes).decode('ascii')
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def hexencode_and_wrap(self, bytes):
-        dump = str(binascii.hexlify(bytes))
+        dump = bytes.hex()
         return '\n'.join(self.wrap_text_to_line_length(dump, 76))
 
     def ascii_dump_for_data(self, dump_bytes):
@@ -391,7 +390,7 @@ class KeyedArchiveObjectGraphStringNode(KeyedArchiveObjectGraphNode):
         return self.serialized_representation
 
 
-class KeyedArchiveInputData(object):
+class KeyedArchiveInputData:
 
     def __init__(self, raw_data):
         self.raw_data = raw_data
@@ -505,7 +504,7 @@ class KeyedArchiveInputDataBase64(KeyedArchiveInputData):
         self.decoded_data = base64.b64decode(data)
 
 
-class KeyedArchive(object):
+class KeyedArchive:
 
     def __init__(self, archive_dictionary, configuration):
         self.archive_dictionary = archive_dictionary
@@ -708,14 +707,13 @@ class KeyedArchive(object):
         return data
 
 
-class InputOutputConfiguration(object):
+class InputOutputConfiguration:
 
     def __init__(self, output_dump_encoding='hex', output_dump_length=32, input_data_offset=0, input_data_compression_type_and_options=(None, None)):
         self._output_dump_encoding = output_dump_encoding
         self._output_dump_length = output_dump_length
         self._input_data_offset = input_data_offset
         self._input_data_compression_type_and_options = input_data_compression_type_and_options
-
 
     def output_dump_encoding(self):
         return self._output_dump_encoding
@@ -778,7 +776,7 @@ class ChildArchiveInputOutputConfiguration(InputOutputConfiguration):
         return None, None
 
 
-class KeyedArchiveTool(object):
+class KeyedArchiveTool:
 
     def __init__(self, args):
         self.args = args
