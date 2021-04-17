@@ -40,15 +40,36 @@ class KeyedArchiveObjectGraphNode:
     def dump_string(self, seen=None):
         raise Exception('{} must override dump_string()'.format(self.__class__))
 
-    def indent(self, text):
-        return ''.join(['|   ' + line for line in text.splitlines(True)])
+    def indent(self, text, is_last):
+        lines = text.splitlines(True)
+        if len(lines) == 1:
+            if is_last:
+                return f'╰─  {lines[0]}'
+            else:
+                return f'├─  {lines[0]}'
+        
+        lines_out = []
+
+        first = lines[0]
+        middle = lines[1:-1]
+        last = lines[-1]
+
+        lines_out.append(f'├─  {first}')
+        lines_out.extend([f'{"│"}   {l}' for l in middle])
+
+        if is_last:
+            lines_out.append(f'╰─  {last}')
+        else:
+            lines_out.append(f'│   {last}')
+        return ''.join(lines_out)
 
     def indent_except_first(self, text, indent_count):
         lines = text.splitlines(True)
         if len(lines) < 2:
             return text
-        indent = '|' + ' ' * (indent_count - 1)
-        return ''.join(lines[:1] + [indent + line for line in lines[1:]])
+        indent = '│' + ' ' * (indent_count - 1)
+        indent_last = '╰─' + ' ' * (indent_count - 2)
+        return ''.join(lines[:1] + [indent + line for line in lines[1:-1]] + [indent_last + lines[-1]])
 
     def wrap_text_to_line_length(self, text, length):
         return [text[i:i + length] for i in range(0, len(text), length)]
@@ -192,9 +213,12 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
             return instance_header
 
         lines = [instance_header]
-        max_key_len = max(map(len, keys))
         case_insensitive_sorted_property_items = sorted(self.properties.items(), key=lambda x: x[0].lower())
-        for key, value in case_insensitive_sorted_property_items:
+
+
+        max_key_len = max(map(len, keys))
+        last_index = len(case_insensitive_sorted_property_items) - 1
+        for index, (key, value) in enumerate(case_insensitive_sorted_property_items):
             if isinstance(value, KeyedArchiveObjectGraphNode):
 #            if callable(getattr(value, 'dump_string', None)):
                 description = value.dump_string(seen=seen)
@@ -202,7 +226,8 @@ class KeyedArchiveObjectGraphInstanceNode(KeyedArchiveObjectGraphNode):
                 description = str(value)
             longest_key_padding = ' ' * (max_key_len - len(key))
             longest_key_value_indent = max_key_len + 2
-            lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent))))
+            is_last = index == last_index
+            lines.append(self.indent(u'{}:{} {}'.format(key, longest_key_padding, self.indent_except_first(description, longest_key_value_indent)), is_last))
 
         return '\n'.join(lines)
 
@@ -565,10 +590,11 @@ class KeyedArchive:
         try:
             if '$objects' in property_list_object:
                 archive_dictionary = dict(property_list_object)
-        except:
+        except Exception as e:
             pass
 
         if not archive_dictionary:
+            logging.debug(f'Unexpected type {type(property_list_object)} for decoded plist object: {property_list_object}')
             raise Exception('Decoding property list data shown below does not result in dictionary:\n{}'.format(archive_bytes))
 
         return cls(property_list_object, configuration), None
