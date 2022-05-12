@@ -595,7 +595,7 @@ class KeyedArchive:
 
         if not archive_dictionary:
             logging.debug(f'Unexpected type {type(property_list_object)} for decoded plist object: {property_list_object}')
-            raise Exception('Decoding property list data shown below does not result in dictionary:\n{}'.format(archive_bytes))
+            raise Exception('Decoding property list data shown below does not result in dictionary, or dictionary does not have "$objects" key:\n{}'.format(archive_bytes))
 
         return cls(property_list_object, configuration), None
 
@@ -702,6 +702,7 @@ class KeyedArchive:
 
     @classmethod
     def archive_from_file(cls, archive_file, encoding, configuration):
+        print(archive_file)
         data = archive_file.read()
 
         data = KeyedArchiveInputData.guess_encoding(data, encoding)
@@ -830,10 +831,18 @@ class KeyedArchiveTool:
         KeyedArchive.dump_archive_from_plist_file(self.args.plist_path, self.args.plist_keypath, configuration=configuration)
 
     def run_file(self, configuration):
-        if self.args.infile is None:
-            self.parser().print_help()
-            exit(0)
-        KeyedArchive.dump_archive_from_file(self.args.infile, self.args.encoding, configuration)
+        KeyedArchive.dump_archive_from_file(self.input_file(), self.args.encoding, configuration)
+    
+    def input_file(self):
+        if not hasattr(self, '_input_file'):
+            if self.args.infile is None:
+                self.parser().print_help()
+                exit(0)
+            if self.args.infile == '-':
+                _input_file = sys.stdin.buffer
+            else:
+                _input_file = open(self.args.infile, 'rb')
+        return _input_file
 
     def run_service(self, configuration):
         temp = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
@@ -866,7 +875,7 @@ class KeyedArchiveTool:
         input_output_configuration_group.add_argument('--input-data-compression', help='Decompression to apply to serialized keyed archiver data after applying offset and before unarchiving. The "zlib" format is currently the only supported format. You can add decompression options after a colon, for zlib the option is the "window bits" parameter, e.g. "zlib:31"')
 
         file_group = parser.add_argument_group(title='Reading from Files', description='Read the serialized archive from a file or stdin. The tool tries to guess the binary-to-text encoding, if any, unless one is chosen explicitly.')
-        file_group.add_argument('infile', nargs='?', type=argparse.FileType('rb'), help='The path to the input file. Pass - to read from stdin')
+        file_group.add_argument('infile', nargs='?', help='The path to the input file. Pass - to read from stdin')
         file_group.add_argument('--encoding', choices='auto hex base64 none'.split(), default='auto', help='The binary-to-text encoding, if any. The default is auto.')
         file_group.add_argument('--service-mode', action='store_true', help='Enable OS X service mode. Take input from stdin with auto-detected encoding and write the result to a temporary text file and open it with Safari.')
 

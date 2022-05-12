@@ -50,13 +50,32 @@ class Tool(object):
         # log stream --debug --predicate 'subsystem = "com.apple.defaults" and eventMessage contains "setting {"'
         self.user_defaults('com.apple.Dock', {'autohide': True, 'orientation': 'left'}, 'Dock')
         self.user_defaults('com.apple.ActivityMonitor', {'IconType': 6}, 'Activity Monitor')
-        self.user_defaults('-g', {'InitialKeyRepeat': 15, 'KeyRepeat': 2})
+        self.user_defaults('-g', {
+            'InitialKeyRepeat': 15,
+            'KeyRepeat': 2,
+            'NSAutomaticPeriodSubstitutionEnabled': 0,
+            'NSAutomaticPeriodSubstitutionEnabled': 0,
+            'NSAutomaticCapitalizationEnabled': 0,
+            'NSAutomaticSpellingCorrectionEnabled': 0,
+            'WebAutomaticSpellingCorrectionEnabled': 0,
+            'NSAutomaticQuoteSubstitutionEnabled': 0,
+            'NSAutomaticDashSubstitutionEnabled': 0,
+        })
         # https://www.macworld.com/article/178496/crashreport.html
         # https://www.defaults-write.com/os-x-make-crash-reporter-appear-as-a-notification/
         self.user_defaults('com.apple.CrashReporter', {'DialogType': 'developer', 'UseRegularActivationPolicy': True, 'UseUNC': True})
 
         # This one doesn't work because this domain is not writable via command line tools.
-        self.user_defaults('com.apple.universalaccess', {'com.apple.custommenu.apps': ['com.apple.mail']})
+        self.user_defaults('com.apple.universalaccess', {
+            'com.apple.custommenu.apps': ['com.apple.mail'],
+            'showWindowTitlebarIcons': True,
+            'reduceTransparency': True,
+        })
+
+        self.user_defaults('com.apple.iCal', {
+            'first day of week': 1,
+        })
+
         self.user_defaults('com.apple.mail', {
             'ConversationViewSortDescending': True,
             'SuppressDeliveryFailure': True,
@@ -70,6 +89,10 @@ class Tool(object):
             'CustomHeaders': ['List-Id', 'X-Member-Count'],
             'NSUserKeyEquivalents': {'Mark All Messages as Read': '^r'}
         })
+
+        - [ ] defaults write com.apple.finder QuitMenuItem -bool YES && killall Finder
+- [ ] defaults write com.apple.finder _FXShowPosixPathInTitle -bool true
+
 
         self.user_defaults('com.apple.Terminal', {'NewWindowWorkingDirectoryBehavior': 2})
 
