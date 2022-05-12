@@ -1,16 +1,9 @@
-#!/usr/bin/env python
-
-
-from __future__ import absolute_import
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import sys
 import os
 import re
 import argparse
-import logging
 import subprocess
 
 
@@ -31,20 +24,40 @@ class Tool(object):
 
             aliases = re.split(r'^\s+(\w+)\s*$', value, flags=re.MULTILINE)
             del(aliases[0])
+
+            predicates = {}
+
             while aliases:
                 key, value = aliases.pop(0), aliases.pop(0)
-                if key != self.args.predicate_alias:
+                if key not in self.args.predicate_aliases:
                     continue
+                assert key not in predicates
                 concatenated = re.sub(r'\s*$\s*', '', value, flags=re.MULTILINE)
-                print(concatenated)
-                pbcopy_process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
-                pbcopy_process.stdin.write(concatenated)
+                concatenated = concatenated.replace("''", "")
+                concatenated = concatenated.strip("'")
+                predicates[key] = concatenated
 
+            if len(predicates) != len(self.args.predicate_aliases):
+                print(self.args.predicate_aliases)
+                missing_keys = set(self.args.predicate_aliases) - set(predicates.keys())
+                raise Exception(f'Unable to find predicate for key(s) {", ".join(missing_keys)}')
+
+            predicate = None
+            if len(predicates) > 1:
+                predicate = ' OR '.join([f'({p})' for p in predicates.values()])
+            else:
+                assert len(predicates) == 1
+                predicate = list(predicates.values())[0]
+            
+            predicate = f"'{predicate}'"
+
+            print(predicate)
+            subprocess.run(['pbcopy'], input=predicate, text=True)
 
     @classmethod
     def main(cls):
         parser = argparse.ArgumentParser(description='Copy ~/.logrc predicates to clipboard')
-        parser.add_argument('predicate_alias', help='Alias for the predicate to be used')
+        parser.add_argument('predicate_aliases', nargs='+', help='Aliases for the predicate to be used. If multiple are given, combine them with logical OR.')
         return cls(parser.parse_args()).run()
 
 if __name__ == "__main__":
