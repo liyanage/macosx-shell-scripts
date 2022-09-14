@@ -1,10 +1,4 @@
-#!/usr/bin/env python
-
-
-from __future__ import absolute_import
-from __future__ import unicode_literals
-from __future__ import division
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import sys
 import os
@@ -13,7 +7,7 @@ import argparse
 import logging
 import subprocess
 import pkg_resources
-import urllib2
+import urllib.request
 import json
 import tarfile
 import zipfile
@@ -41,6 +35,7 @@ class GitHubReleaseAsset(object):
         def predicate(asset):
             if re.search(regex, asset.name()):
                 return True
+        predicate._predicate_description = str(regex)
         return predicate
 
 
@@ -58,7 +53,7 @@ class GitHubRelease(object):
             try:
                 url = 'https://api.github.com/repos/{}/{}/releases/{}'.format(self.repository.project, self.repository.repository, self.release)
                 logging.debug('Loading {}'.format(url))            
-                result = urllib2.urlopen(url)
+                result = urllib.request.urlopen(url)
                 self.cached_server_data = json.load(result)
                 assert 'assets' in self.cached_server_data, 'Unexpected data format: {}'.format(self.cached_server_data)
             except Exception as e:
@@ -92,7 +87,10 @@ class GitHubRelease(object):
         assets = [GitHubReleaseAsset(asset_info) for asset_info in self.server_data()['assets']]
         logging.debug('assets before filtering: {}'.format([a.name() for a in assets]))
         if predicate:
+            input_asset_count = len(assets)
             assets = [a for a in assets if predicate(a)]
+            if not assets:
+                logging.warning(f'Zero predicate results for list of {input_asset_count} input assets for predicate {predicate._predicate_description}')
         return assets
 
     def preferred_asset(self):
@@ -229,7 +227,7 @@ class Tool(object):
     @classmethod
     def version_from_process_output(cls, cmd, regex=None):
         try:
-            version_string = subprocess.check_output(cmd).strip()
+            version_string = subprocess.check_output(cmd, text=True).strip()
         except Exception as e:
             return None        
         if regex:
@@ -258,7 +256,7 @@ class ToolHugo(GitHubReleaseBasedTool):
         self.repo = GitHubRepo('gohugoio', 'hugo')
         self.release = GitHubRelease(self.repo, 'latest',
             version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('name', self.version_regex()),
-            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'extended_.*_macOS-64bit'))
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'hugo_extended.*_macOS-universal'))
 
     def installed_version(self):
         return self.version_from_process_output(['hugo', 'version'], self.version_regex())
@@ -283,7 +281,7 @@ class ToolNinja(GitHubReleaseBasedTool):
     def install_archive(self, archive_path):
         archive = zipfile.ZipFile(archive_path)
         archive.extractall(path=os.path.expanduser('~/bin/'), members=['ninja'])
-        os.chmod(os.path.expanduser('~/bin/ninja'), 0755)
+        os.chmod(os.path.expanduser('~/bin/ninja'), 0o755)
 
 
 class ToolCmake(GitHubReleaseBasedTool):
@@ -344,8 +342,8 @@ class ToolExifTool(Tool):
     def server_data(self):
         if not self.cached_server_data:
             try:
-                request = urllib2.Request(self.info_page_url)
-                response = urllib2.urlopen(request)
+                request = urllib.request.Request(self.info_page_url)
+                response = urllib.request.urlopen(request)
                 data = response.read()
                 results = re.findall(r'<a href="(ExifTool-([\d+.]+).dmg)">', data)
                 if results:
@@ -394,9 +392,9 @@ class ToolPython3(PKGBasedTool):
 
     def __init__(self):
         download_page_url = 'https://www.python.org/downloads/'
-        request = urllib2.Request(download_page_url)
-        response = urllib2.urlopen(request)
-        self.data = response.read()
+        request = urllib.request.Request(download_page_url)
+        response = urllib.request.urlopen(request)
+        self.data = response.read().decode('utf-8')
         result = re.findall(r'href="(.*/python-([\d+.]+).*pkg)">Download Python 3', self.data)
         if not result:
             print(self.data)
@@ -411,10 +409,10 @@ class ToolNode(PKGBasedTool):
 
     def __init__(self):
         download_page_url = 'https://nodejs.org/en/'
-        request = urllib2.Request(download_page_url)
+        request = urllib.request.Request(download_page_url)
         logging.debug('Loading {}'.format(download_page_url))
-        response = urllib2.urlopen(request)
-        self.data = response.read()
+        response = urllib.request.urlopen(request)
+        self.data = response.read().decode('utf-8')
         result = re.findall(r'<a href="(https://nodejs\.org/dist/v.*?/)".*?title="Download .*?Current".*?data-version="v([0-9\.]+)', self.data)
         if not result:
             print(self.data)
