@@ -33,7 +33,7 @@ class Tool(object):
                     continue
                 assert key not in predicates
                 concatenated = re.sub(r'\s*$\s*', '', value, flags=re.MULTILINE)
-                concatenated = concatenated.replace("''", "")
+                concatenated = concatenated.replace("''", " ")
                 concatenated = concatenated.strip("'")
                 predicates[key] = concatenated
 
