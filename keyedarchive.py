@@ -282,7 +282,7 @@ class KeyedArchiveObjectGraphNSMutableDataNode(KeyedArchiveObjectGraphInstanceNo
         if data_value:
             replacement = archive.replacement_object_for_value(data_value)
             if replacement:
-                self.properties['NS.data'] = replacement.serialized_representation['NS.data']
+                self.properties['NS.data'] = replacement.serialized_representation
 
 
 class KeyedArchiveObjectGraphNSDataNode(KeyedArchiveObjectGraphNode):
