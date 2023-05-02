@@ -256,7 +256,7 @@ class ToolHugo(GitHubReleaseBasedTool):
         self.repo = GitHubRepo('gohugoio', 'hugo')
         self.release = GitHubRelease(self.repo, 'latest',
             version_number_accessor=GitHubRelease.version_number_accessor_for_server_data_item_regex('name', self.version_regex()),
-            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'hugo_extended.*_macOS-universal'))
+            preferred_asset_predicate=GitHubReleaseAsset.predicate_for_name_regex(r'hugo_extended.*_darwin-universal'))
 
     def installed_version(self):
         return self.version_from_process_output(['hugo', 'version'], self.version_regex())
