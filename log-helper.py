@@ -25,6 +25,7 @@ class Tool(object):
         state = 'start'
         while args_in:
             arg = args_in.pop(0)
+            print('state', state, arg)
 
             if state == 'reading_archive_path':
                 archive_path = Path(arg)
@@ -34,7 +35,11 @@ class Tool(object):
                 timestamp_argument_indexes.append((len(args_out)))
                 state = 'start'
             else:
-                if arg == '--archive':
+                if arg.endswith('.logarchive'):
+                    args_in.insert(0, arg)
+                    state = 'reading_archive_path'
+                    continue
+                elif arg == '--archive':
                     state = 'reading_archive_path'
                 elif arg in ['--start', '--end']:
                     state = 'reading_timestamp'
@@ -44,6 +49,9 @@ class Tool(object):
         timezone_delta = None
         if archive_path:
             timezone_delta = cls.timezone_delta_for_log_archive_path(archive_path)
+        
+        if timezone_delta:
+            print(f'Timezone delta: {timezone_delta}')
 
         if timestamp_argument_indexes and timezone_delta:
             cls.update_timestamp_args(args_out, timestamp_argument_indexes, timezone_delta)
@@ -71,7 +79,6 @@ class Tool(object):
         # print('local:', first_line_timestamp_local, first_line_timestamp_local.utcoffset())
 
         delta = first_line_timestamp_original.utcoffset() - first_line_timestamp_local.utcoffset()
-        print('Timezone delta:', delta)
         return delta
 
     @classmethod
